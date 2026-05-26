@@ -1,0 +1,23 @@
+# SOPS age private keys — NEVER commit
+*.agekey
+age.key
+
+# Terraform state and local overrides
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+*.tfvars           # commit only *.sops.tfvars (encrypted)
+!*.sops.tfvars
+
+# kubeconfig fragments
+*.kubeconfig
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/settings.json
+*.swp

@@ -1,0 +1,22 @@
+---
+all:
+  vars:
+    ansible_user: root
+    ansible_python_interpreter: /usr/bin/python3
+
+  children:
+    proxmox_nodes:
+      hosts:
+        # Populate after Tinkerbell provisions nodes and static IPs are assigned.
+        pve-01:
+          ansible_host: ~  # TODO: static IP (e.g. 10.20.30.51)
+        pve-02:
+          ansible_host: ~  # TODO: static IP (e.g. 10.20.30.52)
+        pve-03:
+          ansible_host: ~  # TODO: static IP (e.g. 10.20.30.53)
+
+    k3s_control_plane:
+      hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)
+
+    k3s_workers:
+      hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)

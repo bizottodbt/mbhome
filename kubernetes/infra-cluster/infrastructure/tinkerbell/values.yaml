@@ -1,0 +1,15 @@
+# Encrypted Helm values for Tinkerbell — managed with SOPS + age.
+#
+# Use this file for sensitive Helm value overrides (e.g., BMC credentials
+# when rufio is enabled). Non-sensitive values live inline in helmrelease.yaml.
+#
+# To use this file:
+#   1. Create a Kubernetes Secret with stringData containing Helm value overrides
+#   2. Encrypt with SOPS:  sops --encrypt --in-place values.yaml
+#   3. Reference from helmrelease.yaml:
+#        spec:
+#          valuesFrom:
+#            - kind: Secret
+#              name: tinkerbell-values
+#
+# No sensitive Helm values are required for Phase 1 — this is a placeholder.

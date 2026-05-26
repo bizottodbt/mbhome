@@ -1,0 +1,45 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: tinkerbell
+  namespace: tink-system
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: tinkerbell
+    namespace: tink-system
+  install:
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    # ${TINKERBELL_LB_IP} is substituted by Flux from cluster-secrets (default: 10.20.30.200)
+    stack:
+      loadBalancerIP: "${TINKERBELL_LB_IP}"
+    smee:
+      publicIP: "${TINKERBELL_LB_IP}"
+      dhcp:
+        # proxy mode: works alongside existing DHCP server (${CLUSTER_GATEWAY})
+        enabled: true
+        mode: proxy
+      http:
+        enabled: true
+        osieURL: "http://${TINKERBELL_LB_IP}:8080"
+      tftp:
+        enabled: true
+    hegel:
+      enabled: true
+    tink:
+      server:
+        enabled: true
+      controller:
+        enabled: true
+    rufio:
+      # MJ11-EC1 nodes have onboard IPMI (Aspeed AST2500).
+      # Enable once Proxmox nodes are assembled and IPMI IPs are known.
+      enabled: false

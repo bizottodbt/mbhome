@@ -1,0 +1,33 @@
+# Hardware object for MJ11-EC1 node 2.
+# Populate mac and ip.address after physical assembly.
+---
+apiVersion: tinkerbell.org/v1alpha1
+kind: Hardware
+metadata:
+  name: proxmox-node-02
+  namespace: tink-system
+spec:
+  disks:
+    - device: /dev/nvme0n1
+  metadata:
+    facility:
+      facilityCode: homelab
+    instance:
+      hostname: pve-02
+      id: proxmox-node-02
+  interfaces:
+    - dhcp:
+        arch: x86_64
+        hostname: pve-02
+        ip:
+          address: ""       # TODO: static IP
+          gateway: 10.20.30.1
+          netmask: 255.255.255.0
+        lease_time: 86400
+        mac: ""             # TODO: MAC address
+        name_servers:
+          - 10.20.30.1
+        uefi: true
+      netboot:
+        allowPXE: true
+        allowWorkflow: true

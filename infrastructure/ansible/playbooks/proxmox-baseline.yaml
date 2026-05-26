@@ -1,0 +1,42 @@
+---
+# Phase 2 — run after Tinkerbell provisions Proxmox onto all three MJ11-EC1 nodes.
+- name: Proxmox node baseline configuration
+  hosts: proxmox_nodes
+  become: true
+  roles:
+    - common
+
+  tasks:
+    - name: Set kernel parameters required for Intel I210 NICs
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX='
+        line: 'GRUB_CMDLINE_LINUX="pcie_aspm=off ahci.mobile_lpm_policy=0"'
+      notify: Update grub
+
+    - name: Create NFS mount directories for Unraid shares
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /mnt/proxmox-vm
+        - /mnt/proxmox-backup
+        - /mnt/proxmox-snippets
+
+    - name: Mount Unraid NFS shares
+      ansible.posix.mount:
+        path: "{{ item.path }}"
+        src: "10.20.30.48:{{ item.src }}"
+        fstype: nfs
+        opts: "rw,hard,intr,nfsvers=4"
+        state: mounted
+      loop:
+        - { path: /mnt/proxmox-vm,       src: /mnt/user/proxmox-vm }
+        - { path: /mnt/proxmox-backup,    src: /mnt/user/proxmox-backup }
+        - { path: /mnt/proxmox-snippets,  src: /mnt/user/proxmox-snippets }
+
+  handlers:
+    - name: Update grub
+      ansible.builtin.command: update-grub
+      changed_when: true

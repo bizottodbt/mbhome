@@ -1,0 +1,2 @@
+# k3s-node role — installs and configures k3s on worker VMs.
+# TODO: implement in tasks/main.yaml (Phase 2)

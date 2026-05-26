@@ -1,0 +1,3 @@
+# SSSD role — joins nodes to Active Directory and configures PAM/NSS.
+# Dependencies: realmd, sssd, sssd-ad, adcli, krb5-user
+# TODO: implement in tasks/main.yaml (Phase 3)

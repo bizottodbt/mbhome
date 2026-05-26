@@ -1,0 +1,11 @@
+---
+apiVersion: tinkerbell.org/v1alpha1
+kind: Workflow
+metadata:
+  name: proxmox-node-03
+  namespace: tink-system
+spec:
+  templateRef: proxmox-install
+  hardwareRef: proxmox-node-03
+  hardwareMap:
+    device_1: ""  # TODO: set to MAC address matching hardware/proxmox-node-03.yaml
