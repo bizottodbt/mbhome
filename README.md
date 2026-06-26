@@ -27,7 +27,9 @@ The playbook is **idempotent**:
 ### Run
 
 The playbook targets the `unraid` group defined in [`infrastructure/ansible/inventory/hosts.yaml`](infrastructure/ansible/inventory/hosts.yaml).
-To change the host IP or SSH alias, edit `ansible_host` there — no changes to the playbook are needed.
+Real host IPs and SSH aliases live in the git-ignored local overlay. Start from
+[`infrastructure/ansible/inventory/hosts.local.example.yaml`](infrastructure/ansible/inventory/hosts.local.example.yaml)
+and copy it to `infrastructure/ansible/inventory/hosts.local.yaml`.
 
 ```bash
 make openstack-vm
@@ -52,7 +54,11 @@ This preserves Kolla Docker volumes, MariaDB metadata, Glance image files, Ironi
 
 ## Deploy OpenStack (Kolla-Ansible)
 
-After the VM is up, deploy OpenStack from the Mac. Configuration is in [`infrastructure/kolla-ansible/globals.yml`](infrastructure/kolla-ansible/globals.yml) — enabled services: Keystone, Glance, Neutron, Ironic, Horizon.
+After the VM is up, deploy OpenStack from the Mac. The public example is
+[`infrastructure/kolla-ansible/globals.example.yml`](infrastructure/kolla-ansible/globals.example.yml);
+copy it to git-ignored `infrastructure/kolla-ansible/globals.yml` and set local
+addresses/interface names there. Enabled services: Keystone, Glance, Neutron,
+Ironic, Horizon.
 
 ### Additional requirements
 
@@ -60,7 +66,7 @@ After the VM is up, deploy OpenStack from the Mac. Configuration is in [`infrast
 |---|---|
 | Kolla-Ansible on the controller | handled automatically by `make kolla-genpwd` |
 | `passwords.yml` populated | `make kolla-genpwd` (creates venv then generates passwords) |
-| `network_interface` correct in `globals.yml` | Verify with `ssh openstack ip link show` after first boot |
+| `network_interface` correct in local `globals.yml` | Verify with `ssh openstack ip link show` after first boot |
 | Ironic Python Agent images | `make kolla-ipa-images` — built after `kolla-deploy` (git-ignored) |
 
 ### Run
@@ -69,7 +75,7 @@ After the VM is up, deploy OpenStack from the Mac. Configuration is in [`infrast
 # One-time: create venv + generate passwords (git-ignored)
 make kolla-genpwd
 
-# Verify network interface name on the VM, update globals.yml if needed
+# Verify network interface name on the VM, update local globals.yml if needed
 ssh openstack ip link show
 
 make kolla-bootstrap   # installs Docker + Kolla deps on the VM
@@ -164,14 +170,19 @@ Use `kolla-destroy` only when intentionally removing the OpenStack deployment. D
 
 ## Provision Bare Metal (Ironic) — Phase 1
 
-Node definitions live in [`infrastructure/ironic/nodes/proxmox-nodes.yaml`](infrastructure/ironic/nodes/proxmox-nodes.yaml).
-Fill in BMC credentials, PXE MAC addresses, and hardware specs for each node, then follow the steps below.
+Node definitions are based on
+[`infrastructure/ironic/nodes/proxmox-nodes.example.yaml`](infrastructure/ironic/nodes/proxmox-nodes.example.yaml).
+Copy it to git-ignored `infrastructure/ironic/nodes/proxmox-nodes.yaml`, then
+fill in BMC credentials, PXE MAC addresses, and hardware specs for each node.
 
 ### Config overrides
 
 Kolla merges any `.conf` file under `infrastructure/kolla-ansible/config/` into the corresponding service config on the VM. The file must be named `<service>.conf` (e.g. `ironic.conf`) at the top level of `config/` — not inside a service subdirectory.
 
-For example [`infrastructure/kolla-ansible/config/ironic.conf`](infrastructure/kolla-ansible/config/ironic.conf) sets `enforce_scope = false` so Horizon can display Ironic nodes with a project-scoped token.
+For example [`infrastructure/kolla-ansible/config/ironic.example.conf`](infrastructure/kolla-ansible/config/ironic.example.conf)
+shows the local `infrastructure/kolla-ansible/config/ironic.conf` override that
+sets `enforce_scope = false` so Horizon can display Ironic nodes with a
+project-scoped token.
 
 After changing any config override:
 
@@ -183,7 +194,7 @@ make kolla-reconfigure TAGS=ironic   # or omit TAGS to reconfigure all services
 
 During deploy, Ironic conductor may log that it is downloading the instance image into its local cache before powering on the node. That is expected. The conductor stages images under `/var/lib/ironic`, which Kolla stores in the `ironic` Docker volume.
 
-The Proxmox raw image is slightly larger than Ironic's default 20 GiB master-image cache threshold. [`infrastructure/kolla-ansible/config/ironic.conf`](infrastructure/kolla-ansible/config/ironic.conf) raises `[pxe] image_cache_size` to 65536 MiB so Ironic can keep the converted Proxmox master image between deploys.
+The Proxmox raw image is slightly larger than Ironic's default 20 GiB master-image cache threshold. The local `infrastructure/kolla-ansible/config/ironic.conf` override, mirrored by [`infrastructure/kolla-ansible/config/ironic.example.conf`](infrastructure/kolla-ansible/config/ironic.example.conf), raises `[pxe] image_cache_size` to 65536 MiB so Ironic can keep the converted Proxmox master image between deploys.
 
 Do not optimize this first by changing the Ironic deploy data path. The safer approach is to keep the cache and backing image store on persistent storage:
 
@@ -206,7 +217,7 @@ This playbook (idempotent):
 - Uploads the versioned IPA kernel/initramfs artifacts to Glance
 - Removes and recreates stale Glance IPA images when local checksums changed
 - Creates `provisioning-net` (flat, physnet1, no Neutron DHCP — Ironic dnsmasq handles it)
-- `provisioning-net` doubles as the cleaning network (`ironic_cleaning_network` in `globals.yml`)
+- `provisioning-net` doubles as the cleaning network (`ironic_cleaning_network` in local `globals.yml`)
 
 If `make openstack-setup` recreates the deploy kernel or initramfs, the Glance image IDs change. Re-run `make ironic-set-deploy-images NODE=<node>` for any existing node that has explicit `deploy_kernel` / `deploy_ramdisk` driver-info.
 
@@ -397,8 +408,9 @@ journalctl -b -u proxmox-bootstrap-hosts -u ssh -u pve-cluster -u pveproxy --no-
 
 Router DHCP reservations provide the Proxmox management IPs. The baseline
 playbook does not write static management networking; it only manages extra
-10 GbE point-to-point interfaces from host variables in
-[`infrastructure/ansible/inventory/hosts.yaml`](infrastructure/ansible/inventory/hosts.yaml).
+10 GbE point-to-point interfaces from host variables. The public skeleton is
+[`infrastructure/ansible/inventory/hosts.yaml`](infrastructure/ansible/inventory/hosts.yaml);
+real per-node values live in git-ignored `infrastructure/ansible/inventory/hosts.local.yaml`.
 
 Install the Ansible collections used by the infrastructure playbooks:
 
@@ -422,7 +434,9 @@ The `make ironic-deploy-proxmox` wrapper also runs this baseline from the real
 inventory, so post-deploy configuration uses the same per-node variables.
 
 NFS mounts are controlled by the `proxmox_nfs_mounts` list in
-[`infrastructure/ansible/inventory/hosts.yaml`](infrastructure/ansible/inventory/hosts.yaml).
+`infrastructure/ansible/inventory/hosts.local.yaml`; use
+[`infrastructure/ansible/inventory/hosts.local.example.yaml`](infrastructure/ansible/inventory/hosts.local.example.yaml)
+as the committed reference.
 If an Unraid share does not exist yet, keep that mount with `enabled: false`.
 When the share is created and exported from Unraid, flip it to `enabled: true`
 and rerun the baseline.
@@ -469,8 +483,9 @@ infrastructure/ansible/vars/proxmox-users.local.yaml
 
 Best practice here is:
 
-- Store a Linux password hash, not the plaintext password.
 - Keep the vars file local and git-ignored.
+- Store the plaintext password only in the ignored local file; the playbook
+  hashes it at runtime before applying it.
 - Keep SSH public keys in the same user definition for clarity.
 - Use the `pam` Proxmox realm so the Web UI authenticates against the Linux
   account created by Ansible.
@@ -482,14 +497,7 @@ cp infrastructure/ansible/vars/proxmox-users.local.example.yaml \
   infrastructure/ansible/vars/proxmox-users.local.yaml
 ```
 
-Generate a password hash. On macOS, install `mkpasswd` with `brew install whois`
-if needed:
-
-```bash
-mkpasswd --method=yescrypt
-```
-
-Edit `proxmox-users.local.yaml`, set `password_hash`, and add the SSH public
+Edit `proxmox-users.local.yaml`, set `password`, and add the SSH public
 key. The file is ignored by Git and loaded automatically by `make proxmox-baseline`.
 
 The playbook adds each user to the Linux `sudo` group, creates the Proxmox
