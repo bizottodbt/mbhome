@@ -1,0 +1,16 @@
+# Managed by Ansible. Point-to-point 10 GbE link for {{ inventory_hostname }}.
+[Match]
+Name={{ item.interface }}
+{% if item.mac | default('') %}
+MACAddress={{ item.mac }}
+{% endif %}
+
+[Link]
+RequiredForOnline=no
+MTUBytes={{ item.mtu | default(proxmox_10gbe_mtu | default(1500)) }}
+
+[Network]
+Address={{ item.address }}/{{ item.prefix | default(30) }}
+ConfigureWithoutCarrier=yes
+LinkLocalAddressing=no
+IPv6AcceptRA=no

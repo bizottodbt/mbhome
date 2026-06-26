@@ -1,0 +1,21 @@
+---
+# Bootstrap k3s on Proxmox VMs provisioned by Terraform.
+# Installs k3s on the control plane, fetches the join token,
+# joins worker nodes, then bootstraps Flux pointing at kubernetes/app-cluster/.
+#
+# TODO: implement after Proxmox cluster and Terraform VMs are provisioned (Phase 2).
+- name: Bootstrap k3s cluster
+  hosts: k3s_control_plane
+  gather_facts: false
+  tasks:
+    - name: TODO — install k3s server
+      ansible.builtin.debug:
+        msg: "Phase 2: implement k3s control plane bootstrap"
+
+- name: Join k3s workers
+  hosts: k3s_workers
+  gather_facts: false
+  tasks:
+    - name: TODO — join k3s workers
+      ansible.builtin.debug:
+        msg: "Phase 2: implement k3s worker join"

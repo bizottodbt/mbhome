@@ -1,0 +1,15 @@
+---
+# Copy to homelab.local.yaml and fill in values for your own network.
+# homelab.local.yaml is git-ignored.
+
+homelab_dns_search: lan
+homelab_gateway: 192.0.2.1
+homelab_dns: 192.0.2.1
+
+homelab_openstack_vm_ip: 192.0.2.10
+homelab_openstack_vm_mac: "52:54:00:00:00:0a"
+homelab_openstack_vm_mac2: "52:54:00:00:00:0b"
+
+homelab_provisioning_cidr: 192.0.2.0/24
+homelab_ironic_dhcp_pool_start: 192.0.2.100
+homelab_ironic_dhcp_pool_end: 192.0.2.200

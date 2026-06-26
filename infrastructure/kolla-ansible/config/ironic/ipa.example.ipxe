@@ -1,0 +1,11 @@
+#!ipxe
+
+:retry_dhcp
+dhcp || goto retry_dhcp
+
+:ipa
+:retry_boot
+imgfree
+kernel --timeout 30000 http://192.0.2.10:8089/ironic-agent.kernel ipa-inspection-callback-url=http://192.0.2.10:6385/v1/continue_inspection ipa-api-url=http://192.0.2.10:6385 systemd.journald.forward_to_console=yes BOOTIF=${mac} initrd=ironic-agent.initramfs || goto retry_boot
+initrd --timeout 30000 http://192.0.2.10:8089/ironic-agent.initramfs || goto retry_boot
+boot

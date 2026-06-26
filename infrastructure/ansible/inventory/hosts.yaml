@@ -5,15 +5,43 @@ all:
     ansible_python_interpreter: /usr/bin/python3
 
   children:
-    proxmox_nodes:
+    unraid:
       hosts:
-        # Populate after Tinkerbell provisions nodes and static IPs are assigned.
-        pve-01:
-          ansible_host: ~  # TODO: static IP (e.g. 10.20.30.51)
-        pve-02:
-          ansible_host: ~  # TODO: static IP (e.g. 10.20.30.52)
-        pve-03:
-          ansible_host: ~  # TODO: static IP (e.g. 10.20.30.53)
+        mbhome-nas-01:
+          ansible_user: root
+
+    openstack:
+      hosts:
+        openstack:
+          ansible_user: "{{ lookup('env', 'USER') }}"
+
+    proxmox_nodes:
+      vars:
+        proxmox_dns_search: "{{ homelab_dns_search | default('lan') }}"
+        proxmox_dns_servers: []
+        proxmox_nfs_mounts:
+          # Enable in inventory/hosts.local.yaml after the Unraid export exists.
+          - path: /mnt/proxmox-vms
+            src: /mnt/user/proxmox-vms
+            enabled: false
+          - path: /mnt/proxmox-backup
+            src: /mnt/user/proxmox-backup
+            enabled: false
+          - path: /mnt/proxmox-snippets
+            src: /mnt/user/proxmox-snippets
+            enabled: false
+          - path: /mnt/proxmox-isos
+            src: /mnt/user/proxmox-isos
+            enabled: false
+      hosts:
+        mbhome-proxmox-01:
+          proxmox_10gbe_links: []
+
+        mbhome-proxmox-02:
+          proxmox_10gbe_links: []
+
+        mbhome-proxmox-03:
+          proxmox_10gbe_links: []
 
     k3s_control_plane:
       hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)

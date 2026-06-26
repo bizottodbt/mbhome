@@ -1,0 +1,8 @@
+# Allow Horizon (project-scoped admin) to read Ironic resources.
+# Without this, Horizon gets HTTP 500 because Ironic enforces system scope
+# by default in OpenStack 2024.1+.
+"baremetal:driver:get": "role:admin"
+"baremetal:node:get": "role:admin"
+"baremetal:node:list": "role:admin"
+"baremetal:port:get": "role:admin"
+"baremetal:port:list": "role:admin"

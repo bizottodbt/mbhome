@@ -1,0 +1,7 @@
+# Prerequisites installed before the Proxmox apt repo is added.
+# Everything else (proxmox-ve, kernel) is installed in post-install.d/50-install-proxmox.
+gnupg:
+ca-certificates:
+curl:
+iproute2:
+iputils-ping:

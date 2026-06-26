@@ -1,0 +1,12 @@
+---
+# BMC baseline configuration for MJ11-EC1 nodes.
+# Configures IPMI access, sets boot order, validates Redfish connectivity.
+#
+# TODO: implement after nodes are assembled and BMC IPs are assigned (Phase 1).
+- name: BMC baseline
+  hosts: proxmox_nodes
+  gather_facts: false
+  tasks:
+    - name: TODO — configure IPMI access
+      ansible.builtin.debug:
+        msg: "Phase 1: implement BMC baseline (IPMI user, boot order, Redfish check)"

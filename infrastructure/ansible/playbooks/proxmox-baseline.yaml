@@ -1,42 +1,285 @@
 ---
-# Phase 2 — run after Tinkerbell provisions Proxmox onto all three MJ11-EC1 nodes.
+# Run after Ironic provisions Proxmox onto the bare-metal nodes.
 - name: Proxmox node baseline configuration
-  hosts: proxmox_nodes
+  hosts: "{{ target_hosts | default('proxmox_nodes') }}"
   become: true
+  vars:
+    proxmox_users_file: "{{ playbook_dir }}/../vars/proxmox-users.local.yaml"
   roles:
     - common
 
   tasks:
-    - name: Set kernel parameters required for Intel I210 NICs
-      ansible.builtin.lineinfile:
-        path: /etc/default/grub
-        regexp: '^GRUB_CMDLINE_LINUX='
-        line: 'GRUB_CMDLINE_LINUX="pcie_aspm=off ahci.mobile_lpm_policy=0"'
+    - name: Check for local Proxmox user vars
+      ansible.builtin.stat:
+        path: "{{ proxmox_users_file }}"
+      delegate_to: localhost
+      become: false
+      register: _proxmox_users_file
+
+    - name: Load local Proxmox user vars
+      ansible.builtin.include_vars:
+        file: "{{ proxmox_users_file }}"
+      no_log: true
+      when: _proxmox_users_file.stat.exists
+
+    - name: Find old managed Proxmox 10 GbE network configs
+      ansible.builtin.find:
+        paths: /etc/systemd/network
+        patterns: "05-proxmox-10gbe-*.network"
+        file_type: file
+      register: _proxmox_10gbe_old_configs
+
+    - name: Remove stale managed Proxmox 10 GbE network configs
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ _proxmox_10gbe_old_configs.files | default([]) }}"
+      notify: Reload systemd-networkd
+      when:
+        - _proxmox_10gbe_interface not in _proxmox_10gbe_expected_interfaces
+      vars:
+        _proxmox_10gbe_interface: "{{ item.path | basename | regex_replace('^05-proxmox-10gbe-(.*)\\.network$', '\\1') }}"
+        _proxmox_10gbe_expected_interfaces: >-
+          {{
+            proxmox_10gbe_links | default([])
+            | map(attribute='interface')
+            | list
+          }}
+
+    - name: Configure Proxmox 10 GbE point-to-point interfaces
+      ansible.builtin.template:
+        src: proxmox-10gbe.network.j2
+        dest: "/etc/systemd/network/05-proxmox-10gbe-{{ item.interface }}.network"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ proxmox_10gbe_links | default([]) }}"
+      register: _proxmox_10gbe_networks
+      notify: Reload systemd-networkd
+
+    - name: Apply changed Proxmox 10 GbE network files before reconfigure
+      ansible.builtin.meta: flush_handlers
+
+    - name: Reconfigure changed Proxmox 10 GbE interfaces
+      ansible.builtin.command: "networkctl reconfigure {{ item.item.interface }}"
+      loop: "{{ _proxmox_10gbe_networks.results | default([]) | selectattr('changed') | list }}"
+      changed_when: true
+      failed_when: false
+
+    - name: Keep Proxmox kernel parameters aligned with the DIB image
+      ansible.builtin.copy:
+        dest: /etc/default/grub.d/proxmox-extra.cfg
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX pcie_aspm=off"
       notify: Update grub
 
-    - name: Create NFS mount directories for Unraid shares
+    - name: Configure resolver for package operations
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible. systemd-networkd receives DNS from DHCP, but
+          # this image does not run systemd-resolved, so keep glibc DNS explicit.
+          {% if proxmox_dns_search | default('') %}
+          search {{ proxmox_dns_search }}
+          {% endif %}
+          {% for dns_server in proxmox_dns_servers | default([]) %}
+          nameserver {{ dns_server }}
+          {% endfor %}
+      when: proxmox_dns_servers | default([]) | length > 0
+
+    - name: Ensure Debian package repositories are available
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/debian.sources
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: http://deb.debian.org/debian
+          Suites: trixie trixie-updates
+          Components: main contrib non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+          Types: deb
+          URIs: http://security.debian.org/debian-security
+          Suites: trixie-security
+          Components: main contrib non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+    - name: Remove duplicate or subscription-only apt sources
       ansible.builtin.file:
         path: "{{ item }}"
-        state: directory
-        mode: "0755"
+        state: absent
       loop:
-        - /mnt/proxmox-vm
-        - /mnt/proxmox-backup
-        - /mnt/proxmox-snippets
+        - /etc/apt/sources.list.d/default.list
+        - /etc/apt/sources.list.d/updates.list
+        - /etc/apt/sources.list.d/security.list
+        - /etc/apt/sources.list.d/.list
+        - /etc/apt/sources.list.d/pve-enterprise.sources
+
+    - name: Build Proxmox baseline package list
+      ansible.builtin.set_fact:
+        _proxmox_baseline_packages: >-
+          {{
+            [
+              'dnsutils',
+              'ipmitool',
+              'netcat-openbsd',
+              'tcptraceroute',
+              'traceroute'
+            ]
+            + (['sudo'] if (proxmox_admin_users | default([]) | length > 0) else [])
+          }}
+
+    - name: Check whether Proxmox baseline packages are installed
+      ansible.builtin.command:
+        argv:
+          - dpkg-query
+          - -W
+          - "-f=${Status}"
+          - "{{ item }}"
+      loop: "{{ _proxmox_baseline_packages }}"
+      register: _proxmox_baseline_package_status
+      changed_when: false
+      failed_when: false
+
+    - name: Collect missing Proxmox baseline packages
+      ansible.builtin.set_fact:
+        _proxmox_missing_packages: >-
+          {{
+            _proxmox_baseline_package_status.results
+            | selectattr('rc', 'ne', 0)
+            | map(attribute='item')
+            | list
+          }}
+
+    - name: Refresh apt metadata before installing baseline packages
+      ansible.builtin.command:
+        argv:
+          - apt-get
+          - -o
+          - APT::Update::Error-Mode=any
+          - update
+      register: _proxmox_apt_update
+      changed_when: false
+      failed_when: >-
+        _proxmox_apt_update.rc != 0 or
+        'Failed to fetch' in ((_proxmox_apt_update.stdout | default('')) ~ (_proxmox_apt_update.stderr | default('')))
+      when: _proxmox_missing_packages | length > 0
+
+    - name: Install Proxmox baseline packages
+      ansible.builtin.command:
+        argv: "{{ ['apt-get', 'install', '-y'] + _proxmox_missing_packages }}"
+      changed_when: true
+      when: _proxmox_missing_packages | length > 0
+
+    - name: Ensure Proxmox admin users exist
+      ansible.builtin.user:
+        name: "{{ item.name }}"
+        comment: "{{ item.comment | default(omit) }}"
+        shell: "{{ item.shell | default('/bin/bash') }}"
+        groups: "{{ item.groups | default(['sudo']) }}"
+        append: true
+        password: >-
+          {{
+            item.password_hash
+            | default(
+                (
+                  item.password
+                  | password_hash(
+                      'sha512',
+                      ((inventory_hostname ~ '-' ~ item.name) | hash('sha256'))[:16]
+                    )
+                ) if item.password is defined else omit
+              )
+          }}
+        update_password: "{{ 'always' if (item.password_hash is defined or item.password is defined) else omit }}"
+        state: present
+      loop: "{{ proxmox_admin_users | default([]) }}"
+      no_log: true
+
+    - name: Install SSH authorized keys for Proxmox admin users
+      ansible.posix.authorized_key:
+        user: "{{ item.0.name }}"
+        key: "{{ item.1 }}"
+        state: present
+        exclusive: "{{ item.0.exclusive_ssh_keys | default(false) }}"
+      loop: "{{ query('subelements', proxmox_admin_users | default([]), 'ssh_public_keys', {'skip_missing': true}) }}"
+      no_log: true
+
+    - name: Ensure Proxmox Web UI users exist
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - add
+          - "{{ item.pve_userid | default(item.name ~ '@' ~ (item.pve_realm | default('pam'))) }}"
+          - --comment
+          - "{{ item.comment | default(item.name) }}"
+      register: _pveum_user_add
+      changed_when: _pveum_user_add.rc == 0
+      failed_when: >-
+        _pveum_user_add.rc != 0 and
+        'already exists' not in ((_pveum_user_add.stdout | default('')) ~ (_pveum_user_add.stderr | default('')))
+      loop: "{{ proxmox_admin_users | default([]) }}"
+      when: item.pve_admin | default(true) | bool
+      no_log: true
+
+    - name: Grant Proxmox Web UI admin role
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - aclmod
+          - "{{ item.pve_acl_path | default('/') }}"
+          - -user
+          - "{{ item.pve_userid | default(item.name ~ '@' ~ (item.pve_realm | default('pam'))) }}"
+          - -role
+          - "{{ item.pve_role | default('Administrator') }}"
+      changed_when: false
+      loop: "{{ proxmox_admin_users | default([]) }}"
+      when: item.pve_admin | default(true) | bool
+      no_log: true
+
+    - name: Create NFS mount directories for Unraid shares
+      ansible.builtin.command:
+        argv:
+          - mkdir
+          - -p
+          - "{{ item.path }}"
+      changed_when: false
+      loop: "{{ proxmox_nfs_mounts | default([]) }}"
+      when: item.enabled | default(true) | bool
 
     - name: Mount Unraid NFS shares
       ansible.posix.mount:
         path: "{{ item.path }}"
-        src: "10.20.30.48:{{ item.src }}"
+        src: "{{ proxmox_nfs_server }}:{{ item.src }}"
         fstype: nfs
         opts: "rw,hard,intr,nfsvers=4"
         state: mounted
-      loop:
-        - { path: /mnt/proxmox-vm,       src: /mnt/user/proxmox-vm }
-        - { path: /mnt/proxmox-backup,    src: /mnt/user/proxmox-backup }
-        - { path: /mnt/proxmox-snippets,  src: /mnt/user/proxmox-snippets }
+      loop: "{{ proxmox_nfs_mounts | default([]) }}"
+      when:
+        - item.enabled | default(true) | bool
+        - proxmox_nfs_server is defined
+
+    - name: Remove disabled Unraid NFS mounts
+      ansible.posix.mount:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ proxmox_nfs_mounts | default([]) }}"
+      when: not (item.enabled | default(true) | bool)
 
   handlers:
+    - name: Reload systemd-networkd
+      ansible.builtin.command: networkctl reload
+      changed_when: true
+
     - name: Update grub
       ansible.builtin.command: update-grub
       changed_when: true

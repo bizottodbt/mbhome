@@ -1,0 +1,22 @@
+# Copy this file to proxmox-users.local.yaml and replace the example values.
+# proxmox-users.local.yaml is git-ignored because it contains SSH/user
+# operational details.
+#
+# Set password to let Ansible manage password-based PAM login for sudo and the
+# Proxmox Web UI. The playbook hashes it at runtime before applying it.
+#
+# The public key is not secret, but keeping the full user definition in one
+# ignored local file keeps operational details out of normal inventory.
+proxmox_admin_users:
+  - name: bizotto
+    comment: "Proxmox administrator"
+    shell: /bin/bash
+    groups:
+      - sudo
+    pve_admin: true
+    pve_realm: pam
+    pve_role: Administrator
+    pve_acl_path: /
+    password: "CHANGE_ME"
+    ssh_public_keys:
+      - "ssh-ed25519 replace-with-real-public-key bizotto"

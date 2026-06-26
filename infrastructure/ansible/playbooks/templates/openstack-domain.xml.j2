@@ -1,0 +1,116 @@
+<domain type='kvm'>
+  <name>{{ vm_name }}</name>
+  <description>OpenStack (Kolla-Ansible) node — managed by Ansible (openstack-vm.yaml). Do not edit in Unraid GUI.</description>
+  <metadata>
+    <vmtemplate xmlns="unraid" name="OpenStack" icon="debian.png" os="linux"/>
+  </metadata>
+
+  <memory unit='KiB'>{{ vm_memory_kib }}</memory>
+  <currentMemory unit='KiB'>{{ vm_memory_kib }}</currentMemory>
+  <memoryBacking>
+    <nosharepages/>
+  </memoryBacking>
+
+  <vcpu placement='static'>{{ vm_vcpus }}</vcpu>
+
+  <os>
+    <type arch='x86_64' machine='pc-q35-10.2'>hvm</type>
+    <loader readonly='yes' type='pflash' format='raw'>/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd</loader>
+    <nvram template='/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd'
+           format='raw'>/etc/libvirt/qemu/nvram/{{ vm_name }}_VARS-pure-efi.fd</nvram>
+  </os>
+
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+
+  <cpu mode='host-passthrough' check='none' migratable='on'>
+    <topology sockets='1' dies='1' clusters='1' cores='{{ vm_vcpus }}' threads='1'/>
+    <cache mode='passthrough'/>
+  </cpu>
+
+  <clock offset='utc'>
+    <timer name='hpet' present='no'/>
+    <timer name='hypervclock' present='no'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='rtc' tickpolicy='catchup'/>
+  </clock>
+
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+
+  <devices>
+    <emulator>/usr/local/sbin/qemu</emulator>
+
+    <!-- Primary OS disk — VirtIO qcow2, boot order 1 -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='writeback' discard='unmap'/>
+      <source file='{{ vm_disk_path }}'/>
+      <target dev='hdc' bus='virtio'/>
+      <serial>vdisk1</serial>
+      <boot order='1'/>
+    </disk>
+
+    <!-- Persistent OpenStack data disk — Kolla volumes, Glance files, Ironic cache -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='writeback' discard='unmap'/>
+      <source file='{{ vm_data_disk_path }}'/>
+      <target dev='vdb' bus='virtio'/>
+      <serial>openstack-data</serial>
+    </disk>
+
+    <!-- Cloud-init seed ISO — ejected after first boot -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ vm_cloudinit_iso }}'/>
+      <target dev='hda' bus='sata'/>
+      <readonly/>
+    </disk>
+
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+    <controller type='usb' index='0' model='ich9-ehci1'/>
+
+    <!-- Management NIC (enp3s0) — stable MAC preserves DHCP leases across re-deploys -->
+    <interface type='bridge'>
+      <mac address='{{ vm_mac }}'/>
+      <source bridge='{{ vm_bridge }}'/>
+      <model type='virtio-net'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+    </interface>
+
+    <!-- Neutron external NIC (enp4s0) — Neutron/linuxbridge takes this over for provisioning -->
+    <interface type='bridge'>
+      <mac address='{{ vm_mac2 }}'/>
+      <source bridge='{{ vm_bridge }}'/>
+      <model type='virtio-net'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+    </interface>
+
+    <!-- Serial console — accessible via: virsh console {{ vm_name }} -->
+    <serial type='pty'>
+      <target type='isa-serial' port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+
+    <!-- QEMU guest agent -->
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+
+    <!-- VNC for emergency console access -->
+    <graphics type='vnc' port='-1' autoport='yes' websocket='-1' listen='0.0.0.0' keymap='en-us'>
+      <listen type='address' address='0.0.0.0'/>
+    </graphics>
+    <video>
+      <model type='qxl' ram='65536' vram='16384' vgamem='16384' heads='1' primary='yes'/>
+    </video>
+
+    <watchdog model='itco' action='reset'/>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>

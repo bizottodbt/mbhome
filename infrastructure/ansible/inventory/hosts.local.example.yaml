@@ -1,0 +1,57 @@
+---
+# Copy to hosts.local.yaml and fill in values for your own network.
+# hosts.local.yaml is git-ignored and is automatically loaded by Make targets.
+all:
+  children:
+    unraid:
+      hosts:
+        mbhome-nas-01:
+          ansible_host: 192.0.2.48
+
+    openstack:
+      hosts:
+        openstack:
+          ansible_host: 192.0.2.10
+
+    proxmox_nodes:
+      vars:
+        proxmox_dns_servers:
+          - 192.0.2.1
+        proxmox_nfs_mounts:
+          - path: /mnt/proxmox-vms
+            src: /mnt/user/proxmox-vms
+            enabled: true
+          - path: /mnt/proxmox-backup
+            src: /mnt/user/proxmox-backup
+            enabled: true
+          - path: /mnt/proxmox-snippets
+            src: /mnt/user/proxmox-snippets
+            enabled: true
+          - path: /mnt/proxmox-isos
+            src: /mnt/user/proxmox-isos
+            enabled: true
+      hosts:
+        mbhome-proxmox-01:
+          ansible_host: 192.0.2.51
+          proxmox_10gbe_mtu: 1500
+          proxmox_nfs_server: 192.0.2.48
+          proxmox_10gbe_links:
+            - interface: enp5s0f0
+              address: 198.51.100.11
+              prefix: 24
+              purpose: switched-storage-vlan90
+
+        mbhome-proxmox-02:
+          ansible_host: 192.0.2.52
+          proxmox_10gbe_mtu: 1500
+          proxmox_nfs_server: 192.0.2.48
+          proxmox_10gbe_links:
+            - interface: enp5s0f0
+              address: 198.51.100.12
+              prefix: 24
+              purpose: switched-storage-vlan90
+
+        mbhome-proxmox-03:
+          ansible_host: 192.0.2.53
+          proxmox_nfs_server: 192.0.2.48
+          proxmox_10gbe_links: []

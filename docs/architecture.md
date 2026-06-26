@@ -1,390 +1,201 @@
-# Homelab Infrastructure — Architecture
+# Homelab Infrastructure Architecture
 
 ## Overview
 
-Production-grade homelab with GitOps, bare-metal provisioning, and Kubernetes.
-Goal: learn enterprise patterns — Tinkerbell, Flux, Proxmox, AD/SSSD, OpenBao/Vault.
+This repo manages a homelab platform built around:
 
----
+- Unraid as the storage and VM host
+- A single OpenStack VM as the bare-metal provisioning controller
+- Ironic for provisioning Proxmox VE onto physical nodes
+- Proxmox VE as the virtualization layer for later k3s workloads
+- Ansible, DIB, Terraform/OpenTofu, and Flux for automation as the stack grows
 
-## Hardware
+The active bare-metal path is OpenStack Ironic, not Tinkerbell. Older Tinkerbell
+manifests have been removed from the active tree.
+
+## Physical Layout
 
 ### Unraid Server
-- **Role**: Primary storage and VM host
-- **IP**: `10.20.30.48`
-- **Network**: 10GbE
-- **NFS exports**:
-
-  | Share | Path | Purpose |
-  |---|---|---|
-  | `proxmox-vm` | `/mnt/user/proxmox-vm` | Proxmox VM disks (live migration) |
-  | `proxmox-backup` | `/mnt/user/proxmox-backup` | Proxmox Backup Server |
-  | `proxmox-snippets` | `/mnt/user/proxmox-snippets` | cloud-init snippets (Terraform) |
-
-### Proxmox Nodes (3×, not yet purchased)
-
-| Component | Detail |
-|---|---|
-| Motherboard | Gigabyte MJ11-EC1 |
-| CPU | AMD EPYC 3151 (4C/8T, embedded) |
-| PCIe expansion | SlimSAS 8i (PCIe x8) — only expansion slot |
-| M.2 | PCIe x4 (independent of SlimSAS) — OS boot NVMe |
-| NICs | 2× 1GbE onboard (Intel I210) |
-| IPMI | Onboard (Aspeed AST2500) |
-| Kernel params required | `pcie_aspm=off ahci.mobile_lpm_policy=0` |
-
-**Role**: Proxmox cluster, hosting k3s control-plane VMs and stateless worker VMs.
-
----
-
-## Network
-
-- **Subnet**: `10.20.30.0/24`
-- **Gateway / DNS**: `10.20.30.1`
-- **No VLANs** (Phase 1 — all traffic on flat /24)
-- **Future**: IPoIB via SlimSAS → ConnectX-3 → IS5022/SX6036 switch
-
----
-
-## Current State
-
-### infra-01 VM (hosted on Unraid)
 
 | Property | Value |
 |---|---|
-| OS | Debian 13 (Trixie) |
-| IP | `10.20.30.180` (static) |
-| CPU | host passthrough |
-| Machine | Q35 |
-| Disk | 40 GB qcow2, VirtIO, LVM on Unraid SSD cache |
-| NIC | VirtIO-net, bridged to `br0` |
-| k3s | `v1.35.5+k3s1` |
-| User | `bizotto` |
+| Role | Primary storage and VM host |
+| IP | `192.0.2.48` |
+| Network | Flat `192.0.2.0/24` |
 
-k3s launch flags:
-```
---disable traefik
---disable servicelb
---write-kubeconfig-mode 644
---node-ip 10.20.30.180
---advertise-address 10.20.30.180
---tls-san 10.20.30.180
---tls-san infra-01
-```
+Expected NFS shares:
 
-### Developer Machine (MacBook Air, Apple Silicon)
+| Share | Path | Purpose |
+|---|---|---|
+| `proxmox-vm` | `/mnt/user/proxmox-vm` | Proxmox VM disks |
+| `proxmox-backup` | `/mnt/user/proxmox-backup` | Proxmox backups |
+| `proxmox-snippets` | `/mnt/user/proxmox-snippets` | cloud-init snippets for Terraform/OpenTofu |
+
+### OpenStack VM
+
+| Property | Value |
+|---|---|
+| Role | Bare-metal provisioning controller |
+| Host | Unraid |
+| IP | `192.0.2.10` |
+| OS | Debian 13 |
+| Provisioning | `make openstack-vm` |
+| OpenStack deployment | Kolla-Ansible |
+| Enabled services | Keystone, Glance, Neutron, Ironic, Horizon |
+
+The OpenStack VM hosts:
+
+- Ironic API/conductor
+- Ironic dnsmasq/httpboot for PXE/iPXE
+- Glance images for deploy ramdisks and OS images
+- Neutron flat provisioning network metadata
+- Horizon for debugging
+
+### Proxmox Nodes
+
+| Component | Detail |
+|---|---|
+| Platform | Gigabyte MJ11-EC1 / G431-MM0-OT class nodes |
+| CPU | AMD EPYC 3151 |
+| Memory | 128 GiB per current node |
+| BMC | Aspeed AST2500 with IPMI and Redfish |
+| OS target | Local SSD/NVMe, currently modelled as `/dev/sda` in Ironic |
+| Required kernel parameter | `pcie_aspm=off` |
+
+The currently validated Proxmox image boots, accepts the injected SSH key, serves
+the Proxmox web UI on `https://<node-ip>:8006`, and includes `pcie_aspm=off` in
+the running kernel command line.
+
+## Network
+
+Detailed current and future network planning lives in
+[`docs/network-plan.md`](network-plan.md).
 
 | Item | Value |
 |---|---|
-| kubectl | `v1.36.1` |
-| Helm | 3.x |
-| KUBECONFIG | `~/.kube/infra-01.yaml` (set in `~/.zshrc`) |
-| GitHub remote | `git@github.com:bizottodbt/mbhome.git` |
+| Subnet | `192.0.2.0/24` |
+| Gateway/DNS | `192.0.2.1` |
+| OpenStack VM | `192.0.2.10` |
+| DHCP/PXE range | `192.0.2.100-192.0.2.200` |
+| Provisioning network | `provisioning-net` |
+| Provider physical network | `physnet1` |
+| VLANs | Flat management LAN now; UniFi VLAN-only storage network `90` on SFP+ |
+| Storage network | `198.51.100.0/24`, no gateway |
 
----
+Ironic dnsmasq handles PXE DHCP. The Neutron provisioning subnet exists with DHCP
+disabled so Ironic can own PXE behavior directly.
 
-## Architecture
+## Bare-Metal Provisioning Flow
 
-### Two Kubernetes Clusters
+1. `make kolla-ipa-images` builds the Ironic Python Agent kernel/initramfs on the
+   OpenStack VM from the OpenStack release branch configured in the Makefile,
+   then stores them as release-versioned artifacts such as
+   `ironic-agent-2026.1.kernel`.
+2. `make openstack-setup` uploads or refreshes those IPA artifacts in Glance and
+   creates the provisioning network. Glance image names include the same
+   release, for example `ironic-deploy-kernel-2026.1`.
+3. Nodes are registered from `infrastructure/ironic/nodes/proxmox-nodes.yaml`.
+4. `make ironic-set-deploy-images NODE=<node>` writes the current Glance
+   deploy kernel/ramdisk IDs into the node driver-info.
+5. `make ironic-build-image OS=proxmox` builds the Proxmox raw disk image with
+   diskimage-builder on the OpenStack VM and uploads it to Glance.
+6. `openstack baremetal node deploy <node>` PXE-boots IPA, writes the raw image
+   to the node disk, and reboots into local Proxmox.
 
-#### Cluster 1 — infra-cluster (infra-01 on Unraid)
+## Ironic Drivers
 
-- **Purpose**: Infrastructure management only
-- **Hosts**: Tinkerbell (bare-metal provisioning), MetalLB
-- **Managed by**: Flux GitOps → `kubernetes/infra-cluster/`
-- **Location**: Single-node k3s on infra-01 VM
+`ipmi` is the stable baseline for deployment. It supports the critical path:
+power, boot, deploy, management, network, and storage.
 
-#### Cluster 2 — apps-cluster (VMs on Proxmox)
+For IPMI nodes, validation can still show these optional interfaces as false:
 
-- **Purpose**: Application workloads + OpenBao secret store
-- **Managed by**: Flux GitOps → `kubernetes/apps-cluster/`
-- **Provisioned by**: Tinkerbell (Proxmox OS) + Terraform (VMs inside Proxmox)
+- `bios`
+- `console`
+- `firmware`
+- `inspect`
+- `raid`
+- `rescue`
 
-### Proxmox Layer
+That is expected and does not block provisioning.
 
-- 3× MJ11-EC1 nodes provisioned by Tinkerbell via PXE
-- Proxmox OS installed to local M.2 NVMe (persistent across reboots)
-- VM disks on Unraid NFS (`proxmox-vm`) → live migration enabled
-- Proxmox HA restarts stateless k3s worker VMs on node failure
-- k3s workers: stateless — reprovisioned by cloud-init on redeploy
-- k3s control plane: persistent VMs with stable etcd storage
+`redfish` is also enabled. The Gigabyte/AST2500 BMC exposes:
 
-### Storage — Phase 1
-
+```text
+/redfish/v1/Systems/Self
 ```
-Unraid NFS → VM disks       (proxmox-vm share)
-           → Proxmox backups (proxmox-backup share)
-           → cloud-init      (proxmox-snippets share)
+
+Redfish can improve support for BIOS, inspection, management, power, and RAID
+interfaces depending on BMC firmware behavior. It should be tested first on
+spare nodes before changing a known-good IPMI node.
+
+## Proxmox Image Build
+
+The active image path is:
+
+```text
+infrastructure/dib/proxmox/
+  build.sh
+  elements/
+    proxmox-minimal/
+    proxmox-network/
+    proxmox-ssh/
 ```
 
-No Ceph until 10GbE or IB networking is available (1GbE + PCIe constraints).
+Important image behavior:
 
----
+- Debian 13/Trixie base
+- Proxmox VE 9 packages from the no-subscription repository
+- PVE kernel installed via `proxmox-default-kernel`
+- UEFI/GPT boot image via DIB `block-device-efi` and `grub2`
+- DHCP bootstrap networking via `systemd-networkd`
+- Ironic ConfigDrive cloud-init datasource enabled
+- Root SSH key injected from `SSH_KEY_FILE`
+- First boot `/etc/hosts` generated from the DHCP address before Proxmox services start
+- GRUB kernel parameter `pcie_aspm=off`
 
-## GitOps Monorepo Structure
+## Repository Map
 
-```
+```text
 mbhome/
-├── kubernetes/
-│   ├── infra-cluster/               ← Phase 1
-│   │   ├── flux-system/             ← Flux bootstrap (auto-generated + additions)
-│   │   │   ├── gotk-components.yaml ← generated by: flux bootstrap (do not edit)
-│   │   │   ├── gotk-sync.yaml       ← generated by: flux bootstrap (template provided)
-│   │   │   │   ├── kustomization.yaml   ← update after bootstrap to include below
-│   │   │   ├── cluster-secrets.yaml ← Flux Kustomization (depends: none)
-│   │   │   ├── metallb.yaml         ← Flux Kustomization (depends: cluster-secrets)
-│   │   │   └── tinkerbell.yaml      ← Flux Kustomization (depends: metallb)
-│   │   └── infrastructure/
-│   │       ├── kustomization.yaml
-│   │       ├── metallb/
-│   │       │   ├── kustomization.yaml
-│   │       │   ├── namespace.yaml
-│   │       │   ├── helmrepository.yaml
-│   │       │   ├── helmrelease.yaml
-│   │       │   └── ipaddresspool.yaml
-│   │       ├── tinkerbell/              ← namespace: tink-system
-│   │       │   ├── kustomization.yaml
-│   │       │   ├── namespace.yaml
-│   │       │   ├── helmrepository.yaml  ← OCIRepository (oci://ghcr.io/tinkerbell/charts/stack)
-│   │       │   ├── helmrelease.yaml     ← uses ${TINKERBELL_LB_IP} from cluster-secrets
-│   │       │   └── values.yaml          ← SOPS Secret placeholder for BMC creds (Phase 2)
-│   │       └── cluster-secrets/
-│   │           ├── kustomization.yaml
-│   │           └── cluster-secrets.sops.yaml  ← ENCRYPT BEFORE COMMIT
-│   │
-│   └── apps-cluster/                ← Phase 2, after Proxmox
-│       └── .gitkeep
-│
-├── infrastructure/
-│   ├── tinkerbell/                  ← Tinkerbell CRDs (Hardware, Templates, Workflows)
-│   │   ├── hardware/
-│   │   │   ├── proxmox-node-01.yaml
-│   │   │   ├── proxmox-node-02.yaml
-│   │   │   └── proxmox-node-03.yaml
-│   │   ├── templates/
-│   │   │   └── proxmox-install.yaml
-│   │   └── workflows/
-│   │       ├── proxmox-node-01.yaml
-│   │       ├── proxmox-node-02.yaml
-│   │       └── proxmox-node-03.yaml
-│   │
-│   ├── terraform/
-│   │   └── proxmox/
-│   │       ├── main.tf
-│   │       ├── variables.tf
-│   │       ├── outputs.tf
-│   │       └── vms/
-│   │           ├── k3s-controlplane.tf
-│   │           ├── k3s-workers.tf
-│   │           └── services.tf
-│   │
-│   └── ansible/
-│       ├── inventory/
-│       │   └── hosts.yaml
-│       ├── playbooks/
-│       │   ├── proxmox-baseline.yaml  ← Phase 2
-│       │   └── sssd-ad-join.yaml      ← Phase 3 (after AD deployed)
-│       └── roles/
-│           ├── common/
-│           ├── sssd/
-│           └── k3s-node/
-│
-├── .gitignore
-├── .sops.yaml               ← mac_only_encrypted, *.sops.yaml naming convention
-└── docs/
-    ├── architecture.md
-    ├── network.md
-    └── runbooks/
-        ├── flux-bootstrap.md
-        ├── add-proxmox-node.md
-        └── disaster-recovery.md
+  Makefile
+  README.md
+  docs/
+    architecture.md
+  infrastructure/
+    ansible/
+      inventory/
+      playbooks/
+      roles/
+    dib/
+      debian/
+      proxmox/
+    ironic/
+      images/
+      nodes/
+    kolla-ansible/
+      config/
+      globals.yml
+      build-ipa.sh
+    packer/
+    terraform/
+      proxmox/
+  kubernetes/
+    app-cluster/
 ```
 
----
+## Current Status
 
-## Toolchain
+- OpenStack VM deployment path exists through Ansible and Kolla-Ansible.
+- IPA kernel/initramfs build path exists and is aligned to OpenStack `2026.1`.
+- `openstack-setup` refreshes stale IPA Glance images when local checksums change.
+- Proxmox DIB image deploys through Ironic and boots successfully.
+- Proxmox SSH key access, web UI, and `pcie_aspm=off` have been validated.
+- Redfish has been discovered on the first node and should be trialed on spare nodes.
 
-| Layer | Tool | Notes |
-|---|---|---|
-| Bare-metal OS | Tinkerbell | PXE boots and provisions Proxmox onto MJ11-EC1 nodes |
-| VM provisioning | Terraform (`bpg/proxmox`) | Creates k3s VMs inside Proxmox |
-| OS configuration | Ansible | Baseline config, SSSD/AD join (Phase 2/3) |
-| K8s workloads | Flux + Helm | GitOps via HelmRelease CRDs |
-| Image building | Packer | Golden images — Phase 2, optional |
-| Git secrets | SOPS + age | Encrypted in Git, decrypted by Flux at apply time |
-| Cluster secret store | OpenBao | Vault-compatible CNCF fork, on apps-cluster (Phase 2) |
-| K8s secret injection | External Secrets Operator | Pulls from OpenBao → K8s Secrets (Phase 2) |
-| LoadBalancer | MetalLB | L2 mode — required since `servicelb` is disabled |
-| Infra k3s | `v1.35.5+k3s1` | Single node, hosts Tinkerbell + MetalLB |
-| Apps k3s | TBD | Multi-node, hosts workloads + OpenBao |
+## Later Phases
 
-> **Terraform note**: HashiCorp relicensed Terraform to BUSL in 2023. The CNCF-maintained
-> open-source fork is [OpenTofu](https://opentofu.org) — drop-in replacement, identical HCL
-> syntax. Either is valid for learning; OpenTofu is the community direction.
-
----
-
-## Secret Management
-
-Three-layer approach:
-
-```
-Layer 1 — Git secrets (Phase 1)
-  Tool: SOPS + age
-  How:  Kubernetes Secrets and HelmRelease sensitive values are encrypted in Git.
-        Flux decrypts at apply time using an age private key stored as a K8s Secret.
-  Why:  Native Flux integration, zero external dependencies, industry standard for GitOps.
-
-Layer 2 — Cluster secret store (Phase 2)
-  Tool: OpenBao (Vault-compatible, CNCF fork of HashiCorp Vault)
-  How:  Runs as a workload on apps-cluster. Kubernetes auth method for workload access.
-        Dynamic secrets, PKI/TLS cert issuance, encryption-as-a-service.
-  Why:  Enterprise standard. Same API as Vault. BUSL-free.
-
-Layer 3 — K8s secret injection (Phase 2)
-  Tool: External Secrets Operator (ESO)
-  How:  ESO syncs secrets from OpenBao into workload namespaces as K8s Secrets.
-  Why:  Decouples workloads from the secret store. Standard pattern in production.
-```
-
-Personal / SSH credentials remain in 1Password — separate from infrastructure automation.
-
-### SOPS Bootstrap (required before `cluster-secrets.sops.yaml` is committed)
-
-```bash
-# 1. Install age
-brew install age sops
-
-# 2. Generate keypair
-age-keygen -o age.agekey
-
-# 3. Copy the public key line from age.agekey into .sops.yaml
-#    (replace <REPLACE-WITH-YOUR-AGE-PUBLIC-KEY>)
-
-# 4. Encrypt cluster-secrets.sops.yaml
-sops --encrypt --in-place \
-  kubernetes/infra-cluster/infrastructure/cluster-secrets/cluster-secrets.sops.yaml
-
-# 5. Store private key in the cluster (before Flux bootstrap)
-kubectl create secret generic sops-age \
-  --namespace=flux-system \
-  --from-file=age.agekey=./age.agekey
-
-# 6. Delete local private key and back up securely (e.g., 1Password)
-rm age.agekey
-```
-
-The `decryption` block referencing `sops-age` is already configured in
-`kubernetes/infra-cluster/flux-system/tinkerbell.yaml` and `flux-system/cluster-secrets.yaml`.
-
----
-
-## Phase 1 — Next Steps
-
-### 1. Set your age public key in `.sops.yaml`
-
-Replace `<REPLACE-WITH-YOUR-AGE-PUBLIC-KEY>` with the output of `age-keygen`.
-
-### 2. Encrypt `cluster-secrets.sops.yaml` before committing
-
-```bash
-sops --encrypt --in-place \
-  kubernetes/infra-cluster/infrastructure/cluster-secrets/cluster-secrets.sops.yaml
-```
-
-### 3. Bootstrap SOPS age key into the cluster
-
-```bash
-kubectl create secret generic sops-age \
-  --namespace=flux-system \
-  --from-file=age.agekey=./age.agekey
-rm age.agekey   # delete local copy after
-```
-
-### 4. Bootstrap Flux on infra-01
-
-```bash
-flux bootstrap github \
-  --owner=bizottodbt \
-  --repository=mbhome \
-  --branch=main \
-  --path=kubernetes/infra-cluster \
-  --personal
-```
-
-### 5. Update `flux-system/kustomization.yaml` after bootstrap
-
-Flux bootstrap resets this file. Re-add the component entries and commit:
-
-```yaml
-resources:
-  - gotk-components.yaml
-  - gotk-sync.yaml
-  - cluster-secrets.yaml
-  - metallb.yaml
-  - tinkerbell.yaml
-```
-
-### 6. Apply `cluster-secrets` manually (first time only)
-
-```bash
-sops exec-file \
-  kubernetes/infra-cluster/infrastructure/cluster-secrets/cluster-secrets.sops.yaml \
-  'kubectl apply -f {}'
-```
-
-This unblocks `postBuild.substituteFrom` in MetalLB and Tinkerbell Kustomizations.
-
-### 7. MetalLB deploys automatically
-
-`dependsOn: cluster-secrets` → deploys MetalLB → assigns `${METALLB_LB_RANGE}` pool.
-Verify: `kubectl get ipaddresspools -n metallb-system`
-
-### 8. Tinkerbell deploys automatically (`dependsOn: metallb`)
-
-Flux reconciles → Tinkerbell stack → LoadBalancer IP `${TINKERBELL_LB_IP}`.
-Verify: `kubectl get svc -n tink-system`
-
-### 9. Register Proxmox nodes as Hardware objects
-
-Once nodes are assembled, populate MACs and IPs in:
-`infrastructure/tinkerbell/hardware/proxmox-node-0{1,2,3}.yaml`
-Commit → Flux applies, or apply directly with `kubectl`.
-
-### 10. Create Proxmox install Template + Workflow
-
-`infrastructure/tinkerbell/templates/proxmox-install.yaml`
-`infrastructure/tinkerbell/workflows/proxmox-node-01.yaml`
-
-### 11. PXE boot first node
-
-Set first MJ11-EC1 to PXE boot → Tinkerbell provisions Proxmox to M.2 NVMe.
-
----
-
-## Key Decisions
-
-| Decision | Rationale |
-|---|---|
-| No diskless Proxmox | Proxmox OS on local M.2 NVMe; reprovisioned by Tinkerbell if needed |
-| Stateless k3s workers | VMs in Proxmox, reprovisioned via cloud-init on redeploy |
-| No Ceph (Phase 1) | 1GbE bottleneck + PCIe constraints; Unraid NFS sufficient |
-| No proxmox-iso share | Tinkerbell delivers OS via network boot |
-| Keep proxmox-snippets | Required for Terraform + cloud-init GitOps |
-| Two k3s clusters | Infra and app fully separated; different trust boundaries |
-| MetalLB L2 mode | `servicelb` disabled on k3s; Tinkerbell requires LoadBalancer services |
-| SOPS + age (Phase 1) | No external dependency, native Flux integration, zero-setup |
-| `*.sops.yaml` naming | Only files with this suffix are encrypted; avoids accidental encryption |
-| `mac_only_encrypted` | Keeps SOPS diffs readable in PR reviews |
-| `cluster-secrets` pattern | Central Secret with cluster IPs; `postBuild.substituteFrom` injects variables |
-| `OCIRepository` for Tinkerbell | Flux-native OCI Helm source; avoids legacy HelmRepository type:oci |
-| IPoIB future option | SlimSAS → ConnectX-3 → IS5022/SX6036 when needed |
-
----
-
-## Known Issues / Pending
-
-- Proxmox nodes not yet purchased or assembled
-- Active Directory not yet deployed (planned as VM on Proxmox, Phase 3)
-- No VLANs — all traffic on `10.20.30.0/24` (acceptable for Phase 1)
-- apps-cluster Flux bootstrap deferred to Phase 2
+- Register and deploy the remaining Proxmox nodes.
+- Run the Proxmox baseline Ansible playbook for NFS storage and cluster setup.
+- Use Terraform/OpenTofu against Proxmox to create k3s VMs.
+- Bootstrap the app cluster under `kubernetes/app-cluster/`.
+- Add Flux, External Secrets, and OpenBao once the app cluster exists.

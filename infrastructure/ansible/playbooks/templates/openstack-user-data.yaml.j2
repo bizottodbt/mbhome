@@ -1,0 +1,99 @@
+#cloud-config
+# openstack VM — first-boot base configuration
+# Rendered by Ansible playbooks/openstack-vm.yaml
+# OpenStack services are deployed separately by Kolla-Ansible from the Mac.
+
+hostname: {{ vm_hostname }}
+fqdn: {{ vm_hostname }}.local
+manage_etc_hosts: true
+
+# ── User account ─────────────────────────────────────────────────────────────
+users:
+  - name: {{ vm_user }}
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - "{{ vm_ssh_pubkey }}"
+
+# ── Base packages ─────────────────────────────────────────────────────────────
+# Kolla-Ansible requires: docker.io (or docker-ce), python3, and open-iscsi.
+# docker-ce is installed by Kolla bootstrap-servers — we only install prerequisites here.
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+  - ca-certificates
+  - gnupg
+  - locales
+  - python3
+  - python3-pip
+  - qemu-guest-agent
+  - apt-transport-https
+  - open-iscsi      # required by Ironic agent
+  - lvm2            # required by Ironic agent for cleaning
+  - e2fsprogs       # formats the persistent OpenStack data disk
+
+# ── Services ─────────────────────────────────────────────────────────────────
+bootcmd:
+  - |
+    set -eux
+    if [ -f /etc/ssh/sshd_config ]; then
+      sed -i 's/^[[:space:]]*AcceptEnv[[:space:]].*/# disabled by mbhome: &/' /etc/ssh/sshd_config
+    fi
+    if [ -d /etc/ssh/sshd_config.d ]; then
+      find /etc/ssh/sshd_config.d -type f -name '*.conf' -exec sed -i 's/^[[:space:]]*AcceptEnv[[:space:]].*/# disabled by mbhome: &/' {} +
+    fi
+
+runcmd:
+  - |
+    set -eux
+    data_disk=""
+    for _ in $(seq 1 120); do
+      if [ -e /dev/disk/by-id/virtio-openstack-data ]; then
+        data_disk="/dev/disk/by-id/virtio-openstack-data"
+      else
+        data_disk="$(lsblk -ndo PATH,SERIAL,TYPE | awk '$2 == "openstack-data" && $3 == "disk" { print $1; exit }')"
+      fi
+      [ -n "${data_disk}" ] && break
+      udevadm settle || true
+      sleep 1
+    done
+    [ -n "${data_disk}" ]
+
+    if ! blkid "${data_disk}" >/dev/null 2>&1; then
+      mkfs.ext4 -L openstack-data "${data_disk}"
+    fi
+
+    mkdir -p /var/lib/openstack-data
+    if ! grep -q 'LABEL=openstack-data /var/lib/openstack-data' /etc/fstab; then
+      echo 'LABEL=openstack-data /var/lib/openstack-data ext4 defaults,nofail 0 2' >> /etc/fstab
+    fi
+    mountpoint -q /var/lib/openstack-data || mount /var/lib/openstack-data
+
+    mkdir -p /var/lib/openstack-data/docker-volumes
+    mkdir -p /var/lib/openstack-data/glance
+    mkdir -p /var/lib/docker/volumes
+    mkdir -p /var/lib/glance/images
+
+    if ! grep -q '/var/lib/docker/volumes' /etc/fstab; then
+      echo '/var/lib/openstack-data/docker-volumes /var/lib/docker/volumes none bind,nofail,x-systemd.requires-mounts-for=/var/lib/openstack-data 0 0' >> /etc/fstab
+    fi
+    if ! grep -q '/var/lib/glance/images' /etc/fstab; then
+      echo '/var/lib/openstack-data/glance /var/lib/glance/images none bind,nofail,x-systemd.requires-mounts-for=/var/lib/openstack-data 0 0' >> /etc/fstab
+    fi
+    mountpoint -q /var/lib/docker/volumes || mount /var/lib/docker/volumes
+    mountpoint -q /var/lib/glance/images || mount /var/lib/glance/images
+  - |
+    set -eux
+    sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+    locale-gen en_US.UTF-8
+    update-locale LANG=en_US.UTF-8
+    systemctl reload ssh || systemctl reload sshd || true
+  - systemctl enable --now qemu-guest-agent
+  - systemctl enable open-iscsi
+
+final_message: |
+  openstack VM cloud-init complete after $UPTIME seconds.
+  IP: {{ vm_ip }}
+  Next step: run `make kolla-bootstrap` from the mbhome repo root.

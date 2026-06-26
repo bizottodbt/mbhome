@@ -1,0 +1,20 @@
+#!/bin/bash
+# Inject the controller's SSH public key into root's authorized_keys.
+# DIB_ROOT_SSH_KEY must be set in the environment (passed by the Makefile).
+set -e
+
+# Ensure openssh-server is installed (minimal chroot may not have it yet)
+apt-get install -y --no-install-recommends openssh-server
+
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+echo "${DIB_ROOT_SSH_KEY}" > /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+
+# Enable root SSH login (Proxmox requires this for management)
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Set root password for console/SSH access during bootstrap.
+# Override by setting DIB_ROOT_PASSWORD in the environment.
+echo "root:${DIB_ROOT_PASSWORD:-ironic}" | chpasswd

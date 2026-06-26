@@ -14,7 +14,7 @@ terraform {
   #   bucket                      = "terraform-state"
   #   key                         = "proxmox/terraform.tfstate"
   #   region                      = "us-east-1"  # required by S3 provider, value unused by MinIO
-  #   endpoint                    = "http://10.20.30.48:9000"
+  #   endpoint                    = "http://192.0.2.48:9000"
   #   skip_credentials_validation = true
   #   skip_metadata_api_check     = true
   #   skip_region_validation      = true

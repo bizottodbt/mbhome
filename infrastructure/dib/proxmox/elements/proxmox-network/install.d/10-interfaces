@@ -1,0 +1,45 @@
+#!/bin/bash
+# Minimal bootstrap network config: DHCP on all Ethernet interfaces.
+# This is the bare minimum to get the node reachable by Ansible after deploy.
+# All permanent network config (static IPs, bridges, bonds, VLANs) is done
+# via Ansible post-deploy.
+#
+# Uses systemd-networkd with a catch-all [Match] Type=ether rule so DHCP works
+# regardless of the interface name (eth0, enp3s0, enx96f5e9eb18ae, etc.).
+# This also aligns with Proxmox VE's own network stack preference.
+set -e
+
+# Install minimal networking tools and cloud-init for config-drive metadata (hostname, ssh keys, etc.).
+apt-get install -y --no-install-recommends iproute2 iputils-ping cloud-init
+
+# Configure cloud-init to use only the OpenStack ConfigDrive datasource (Ironic).
+mkdir -p /etc/cloud/cloud.cfg.d
+cat > /etc/cloud/cloud.cfg.d/99-ironic.cfg <<'EOF'
+datasource_list: [ConfigDrive, None]
+EOF
+
+# Write a catch-all networkd config: DHCP on any Ethernet interface.
+mkdir -p /etc/systemd/network
+cat > /etc/systemd/network/10-dhcp-all-ether.network <<'EOF'
+[Match]
+Type=ether
+
+[Network]
+DHCP=yes
+
+[DHCP]
+UseDNS=yes
+UseNTP=no
+UseHostname=no
+EOF
+
+# Enable systemd-networkd and disable the legacy ifupdown networking service.
+systemctl enable systemd-networkd || true
+systemctl disable networking       || true
+
+# Write a minimal /etc/network/interfaces to avoid networking.service errors
+# on systems where the unit still exists.
+cat > /etc/network/interfaces <<'EOF'
+auto lo
+iface lo inet loopback
+EOF

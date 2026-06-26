@@ -1,0 +1,4 @@
+kolla-ansible==22.0.0
+ansible-core>=2.19.1,<2.20
+python-openstackclient
+python-ironicclient

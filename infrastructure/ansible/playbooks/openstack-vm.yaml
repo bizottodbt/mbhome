@@ -1,0 +1,258 @@
+---
+# Deploy (or re-deploy) the openstack VM on the Unraid host via libvirt/virsh.
+# This VM hosts OpenStack services (Keystone, Glance, Neutron, Ironic) deployed
+# by Kolla-Ansible from the Mac — see infrastructure/kolla-ansible/.
+#
+# This playbook is IDEMPOTENT:
+#   running  → exits immediately, nothing to do
+#   shut off → virsh start only, no reprovisioning
+#   missing  → full provision: disk download → cloud-init ISO → define → start
+#
+# Usage (from repo root):
+#   make openstack-vm
+#
+# The target host is read from the 'unraid' group in inventory/hosts.yaml.
+# To change the host, edit ansible_host there — no changes here needed.
+#
+# Optionally override vars:
+#   make openstack-vm EXTRA_VARS="-e vm_ssh_pubkey='$(cat ~/.ssh/id_rsa.pub)'"
+#
+# After this playbook completes, deploy OpenStack with:
+#   make kolla-bootstrap   # installs Docker + deps on the VM
+#   make kolla-prechecks   # validates config
+#   make kolla-deploy      # deploys OpenStack services
+
+- name: Deploy openstack VM on Unraid
+  hosts: unraid
+  gather_facts: false
+
+  vars:
+    # ── VM identity ──────────────────────────────────────────────────────────
+    vm_name:     openstack
+    vm_hostname: openstack
+
+    # ── Network ──────────────────────────────────────────────────────────────
+    vm_ip:      "{{ homelab_openstack_vm_ip | default('192.0.2.10') }}"
+    vm_gateway: "{{ homelab_gateway | default('192.0.2.1') }}"
+    vm_dns:     "{{ homelab_dns | default(homelab_gateway | default('192.0.2.1')) }}"
+    vm_mac:     "{{ homelab_openstack_vm_mac | default('52:54:00:00:00:0a') }}"   # management NIC — do not change after first deploy
+    vm_mac2:    "{{ homelab_openstack_vm_mac2 | default('52:54:00:00:00:0b') }}"  # Neutron external NIC — do not change after first deploy
+    vm_bridge:  br0
+
+    # ── Resources ────────────────────────────────────────────────────────────
+    vm_memory_kib: 16777216   # 16 GiB — Kolla-Ansible minimum
+    vm_vcpus:      4
+    vm_disk_size:      100G   # OS + container layers
+    vm_data_disk_size: 200G   # persistent Kolla volumes, Glance images, Ironic cache
+
+    # ── Paths on Unraid ───────────────────────────────────────────────────────
+    vm_domains_dir:     "/mnt/user/domains/{{ vm_name }}"
+    vm_disk_path:       "/mnt/user/domains/{{ vm_name }}/vdisk1.qcow2"
+    vm_data_disk_path:  "/mnt/user/domains/{{ vm_name }}/vdisk-openstack-data.qcow2"
+    vm_cloudinit_iso:   "/mnt/user/isos/{{ vm_name }}-seed.iso"
+    vm_base_image_url:  "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2"
+    vm_base_image_path: "/mnt/user/isos/debian-13-genericcloud-amd64.qcow2"
+
+    # ── SSH public key injected into the VM ──────────────────────────────────
+    # Override with -e vm_ssh_pubkey / vm_ssh_private_key if not using id_ed25519
+    vm_ssh_pubkey:      "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+    vm_ssh_private_key: "~/.ssh/id_ed25519"
+
+    # ── Admin user created inside the VM ─────────────────────────────────────
+    # Defaults to the controller's local username so `ssh openstack` works without -l
+    vm_user: "{{ lookup('env', 'USER') }}"
+
+  tasks:
+    - name: Check for local homelab vars
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../vars/homelab.local.yaml"
+      delegate_to: localhost
+      register: _homelab_local_vars
+      become: false
+
+    - name: Load local homelab vars
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/homelab.local.yaml"
+      when: _homelab_local_vars.stat.exists
+
+    # ── 0. State detection ────────────────────────────────────────────────────
+    - name: Check current VM state
+      ansible.builtin.command: virsh domstate {{ vm_name }}
+      register: _domstate
+      failed_when: false
+      changed_when: false
+
+    - name: Derive VM state facts
+      ansible.builtin.set_fact:
+        _vm_running: "{{ _domstate.rc == 0 and 'running'  in _domstate.stdout }}"
+        _vm_shutoff: "{{ _domstate.rc == 0 and 'shut off' in _domstate.stdout }}"
+        _vm_missing: "{{ _domstate.rc != 0 }}"
+
+    - name: Abort — VM is already running
+      ansible.builtin.meta: end_play
+      when: _vm_running | bool
+
+    - name: Notice — VM is shut off, will start without reprovisioning
+      ansible.builtin.debug:
+        msg: "{{ vm_name }} is defined in libvirt but shut off — skipping provision, starting VM only."
+      when: _vm_shutoff | bool
+
+    # ── 1. Disk image (full-provision path only) ──────────────────────────────
+    - name: Ensure VM domain directory exists
+      ansible.builtin.file:
+        path: "{{ vm_domains_dir }}"
+        state: directory
+        mode: "0755"
+      when: _vm_missing | bool
+
+    - name: Download Debian 13 genericcloud base image (skip if present)
+      ansible.builtin.command:
+        cmd: >
+          curl -fL --progress-bar
+          -o {{ vm_base_image_path }}
+          {{ vm_base_image_url }}
+        creates: "{{ vm_base_image_path }}"
+      when: _vm_missing | bool
+
+    - name: Convert base image → standalone disk and resize to {{ vm_disk_size }}
+      ansible.builtin.shell: |
+        set -euo pipefail
+        qemu-img convert -f qcow2 -O qcow2 "{{ vm_base_image_path }}" "{{ vm_disk_path }}"
+        qemu-img resize "{{ vm_disk_path }}" {{ vm_disk_size }}
+      args:
+        creates: "{{ vm_disk_path }}"
+      when: _vm_missing | bool
+
+    - name: Create persistent OpenStack data disk if missing
+      ansible.builtin.command:
+        cmd: qemu-img create -f qcow2 "{{ vm_data_disk_path }}" {{ vm_data_disk_size }}
+        creates: "{{ vm_data_disk_path }}"
+      when: _vm_missing | bool
+
+    # ── 2. Cloud-init seed ISO — built on Mac controller, then uploaded ───────
+    - name: Create cloud-init staging directory on controller
+      ansible.builtin.file:
+        path: "/tmp/{{ vm_name }}-cidata"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      when: _vm_missing | bool
+
+    - name: Render cloud-init meta-data on controller
+      ansible.builtin.template:
+        src:  templates/openstack-meta-data.j2
+        dest: "/tmp/{{ vm_name }}-cidata/meta-data"
+        mode: "0644"
+      delegate_to: localhost
+      when: _vm_missing | bool
+
+    - name: Render cloud-init network-config on controller
+      ansible.builtin.template:
+        src:  templates/openstack-network-config.yaml.j2
+        dest: "/tmp/{{ vm_name }}-cidata/network-config"
+        mode: "0644"
+      delegate_to: localhost
+      when: _vm_missing | bool
+
+    - name: Render cloud-init user-data on controller
+      ansible.builtin.template:
+        src:  templates/openstack-user-data.yaml.j2
+        dest: "/tmp/{{ vm_name }}-cidata/user-data"
+        mode: "0644"
+      delegate_to: localhost
+      when: _vm_missing | bool
+
+    - name: Remove any stale seed ISO from previous runs
+      ansible.builtin.file:
+        path: "/tmp/{{ vm_name }}-seed.iso"
+        state: absent
+      delegate_to: localhost
+      when: _vm_missing | bool
+
+    - name: Build seed ISO on controller with hdiutil (macOS built-in)
+      ansible.builtin.command:
+        cmd: >
+          hdiutil makehybrid
+          -o /tmp/{{ vm_name }}-seed.iso
+          -joliet -iso
+          -iso-volume-name CIDATA
+          -joliet-volume-name CIDATA
+          /tmp/{{ vm_name }}-cidata
+      delegate_to: localhost
+      when: _vm_missing | bool
+
+    - name: Upload seed ISO to Unraid
+      ansible.builtin.copy:
+        src:  "/tmp/{{ vm_name }}-seed.iso"
+        dest: "{{ vm_cloudinit_iso }}"
+        mode: "0644"
+      when: _vm_missing | bool
+
+    # ── 3. Define VM (full-provision path only) then start ────────────────────
+    - name: Render libvirt domain XML
+      ansible.builtin.template:
+        src:  templates/openstack-domain.xml.j2
+        dest: /tmp/{{ vm_name }}-domain.xml
+        mode: "0644"
+      when: _vm_missing | bool
+
+    - name: Define VM in libvirt
+      ansible.builtin.command: virsh define /tmp/{{ vm_name }}-domain.xml
+      register: _virsh_define
+      changed_when: "'defined' in _virsh_define.stdout"
+      when: _vm_missing | bool
+
+    - name: Ensure libvirt NVRAM directory exists
+      ansible.builtin.file:
+        path: /etc/libvirt/qemu/nvram
+        state: directory
+        mode: "0700"
+      when: _vm_missing | bool
+
+    - name: Initialise UEFI NVRAM from OVMF VARS template
+      ansible.builtin.copy:
+        src:        /usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd
+        dest:       /etc/libvirt/qemu/nvram/{{ vm_name }}_VARS-pure-efi.fd
+        remote_src: true
+        mode:       "0600"
+        force:      false
+      when: _vm_missing | bool
+
+    # Start is the common exit point for both missing and shut-off paths
+    - name: Start VM
+      ansible.builtin.command: virsh start {{ vm_name }}
+      changed_when: true
+
+    # ── 4. Wait for SSH, then cloud-init completion ─────────────────────────
+    - name: Wait for SSH to become reachable on {{ vm_ip }}
+      ansible.builtin.wait_for:
+        host:    "{{ vm_ip }}"
+        port:    22
+        timeout: 420
+        delay:   20
+      delegate_to: localhost
+
+    - name: Remove stale SSH host key for {{ vm_ip }} (fresh VM has a new host key)
+      ansible.builtin.known_hosts:
+        name: "{{ vm_ip }}"
+        state: absent
+      delegate_to: localhost
+      when: _vm_missing | bool
+
+    - name: Wait for cloud-init to finish inside the VM
+      ansible.builtin.command: >
+        ssh -F /dev/null
+        -o BatchMode=yes
+        -o StrictHostKeyChecking=accept-new
+        -i {{ vm_ssh_private_key }}
+        {{ vm_user }}@{{ vm_ip }}
+        cloud-init status --wait
+      delegate_to: localhost
+      changed_when: false
+      when: _vm_missing | bool
+
+    - name: Done
+      ansible.builtin.debug:
+        msg: >-
+          openstack VM is up at {{ vm_ip }}.
+          Next steps: make kolla-bootstrap && make kolla-prechecks && make kolla-deploy

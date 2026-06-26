@@ -1,0 +1,145 @@
+---
+# Configure OpenStack resources required for Ironic bare-metal provisioning:
+#   - Upload IPA deploy kernel + initramfs to Glance
+#   - Create provisioning-net and cleaning-net Neutron networks
+#   - Set deploy_kernel / deploy_ramdisk as Ironic conductor defaults
+#
+# Run AFTER kolla-deploy and kolla-post-deploy:
+#   make openstack-setup
+#
+# Credentials are read from infrastructure/kolla-ansible/admin-openrc.sh via
+# the environment — source it before running, or let the Makefile target do it.
+
+- name: Configure OpenStack resources for Ironic
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    os_auth_url: "http://{{ homelab_openstack_vm_ip | default('192.0.2.10') }}:5000"
+    os_project_name: "admin"
+    os_username: "admin"
+    os_password: "{{ lookup('env', 'OS_PASSWORD') }}"
+    os_user_domain_name: "Default"
+    os_project_domain_name: "Default"
+    os_region_name: "RegionOne"
+
+    openstack_release: "{{ lookup('env', 'OPENSTACK_RELEASE') | default('2026.1', true) }}"
+    ironic_kernel_image_name: "ironic-deploy-kernel-{{ openstack_release }}"
+    ironic_initramfs_image_name: "ironic-deploy-initramfs-{{ openstack_release }}"
+    ironic_kernel_path: "{{ playbook_dir }}/../../kolla-ansible/config/ironic/ironic-agent-{{ openstack_release }}.kernel"
+    ironic_initramfs_path: "{{ playbook_dir }}/../../kolla-ansible/config/ironic/ironic-agent-{{ openstack_release }}.initramfs"
+
+    provisioning_network: "provisioning-net"
+    subnet_cidr: "{{ homelab_provisioning_cidr | default('192.0.2.0/24') }}"
+    dhcp_pool_start: "{{ homelab_ironic_dhcp_pool_start | default('192.0.2.100') }}"
+    dhcp_pool_end: "{{ homelab_ironic_dhcp_pool_end | default('192.0.2.200') }}"
+    gateway: "{{ homelab_gateway | default('192.0.2.1') }}"
+
+  module_defaults:
+    group/openstack.cloud.openstack:
+      auth:
+        auth_url: "{{ os_auth_url }}"
+        username: "{{ os_username }}"
+        password: "{{ os_password }}"
+        project_name: "{{ os_project_name }}"
+        user_domain_name: "{{ os_user_domain_name }}"
+        project_domain_name: "{{ os_project_domain_name }}"
+      region_name: "{{ os_region_name }}"
+
+  tasks:
+    - name: Check for local homelab vars
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../vars/homelab.local.yaml"
+      register: _homelab_local_vars
+
+    - name: Load local homelab vars
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/homelab.local.yaml"
+      when: _homelab_local_vars.stat.exists
+
+    - name: Check local IPA deploy kernel file
+      ansible.builtin.stat:
+        path: "{{ ironic_kernel_path }}"
+        checksum_algorithm: md5
+      register: ipa_kernel_file
+
+    - name: Check local IPA deploy initramfs file
+      ansible.builtin.stat:
+        path: "{{ ironic_initramfs_path }}"
+        checksum_algorithm: md5
+      register: ipa_initramfs_file
+
+    - name: Look up existing IPA deploy kernel in Glance
+      openstack.cloud.image_info:
+        name: "{{ ironic_kernel_image_name }}"
+      register: existing_ipa_kernel
+
+    - name: Look up existing IPA deploy initramfs in Glance
+      openstack.cloud.image_info:
+        name: "{{ ironic_initramfs_image_name }}"
+      register: existing_ipa_initramfs
+
+    - name: Remove stale IPA deploy kernel from Glance
+      openstack.cloud.image:
+        name: "{{ ironic_kernel_image_name }}"
+        state: absent
+      when:
+        - existing_ipa_kernel.images | length > 0
+        - existing_ipa_kernel.images[0].checksum != ipa_kernel_file.stat.checksum
+
+    - name: Remove stale IPA deploy initramfs from Glance
+      openstack.cloud.image:
+        name: "{{ ironic_initramfs_image_name }}"
+        state: absent
+      when:
+        - existing_ipa_initramfs.images | length > 0
+        - existing_ipa_initramfs.images[0].checksum != ipa_initramfs_file.stat.checksum
+
+    - name: Upload IPA deploy kernel to Glance
+      openstack.cloud.image:
+        name: "{{ ironic_kernel_image_name }}"
+        state: present
+        is_public: true
+        disk_format: aki
+        container_format: aki
+        filename: "{{ ironic_kernel_path }}"
+        checksum: "{{ ipa_kernel_file.stat.checksum }}"
+      register: ipa_kernel
+
+    - name: Upload IPA deploy initramfs to Glance
+      openstack.cloud.image:
+        name: "{{ ironic_initramfs_image_name }}"
+        state: present
+        is_public: true
+        disk_format: ari
+        container_format: ari
+        filename: "{{ ironic_initramfs_path }}"
+        checksum: "{{ ipa_initramfs_file.stat.checksum }}"
+      register: ipa_initramfs
+
+    - name: Print IPA image UUIDs
+      debug:
+        msg:
+          - "{{ ironic_kernel_image_name }}: {{ ipa_kernel.image.id }}"
+          - "{{ ironic_initramfs_image_name }}: {{ ipa_initramfs.image.id }}"
+
+    - name: Create provisioning network
+      openstack.cloud.network:
+        name: "{{ provisioning_network }}"
+        state: present
+        shared: true
+        provider_network_type: flat
+        provider_physical_network: physnet1
+
+    - name: Create provisioning subnet (no Neutron DHCP — Ironic dnsmasq handles it)
+      openstack.cloud.subnet:
+        name: "{{ provisioning_network }}-subnet"
+        state: present
+        network_name: "{{ provisioning_network }}"
+        cidr: "{{ subnet_cidr }}"
+        allocation_pool_start: "{{ dhcp_pool_start }}"
+        allocation_pool_end: "{{ dhcp_pool_end }}"
+        gateway_ip: "{{ gateway }}"
+        enable_dhcp: false
+        # cleaning-net reuses provisioning-net (physnet1 can only have one flat network)

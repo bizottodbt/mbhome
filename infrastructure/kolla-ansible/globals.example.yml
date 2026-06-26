@@ -1,0 +1,72 @@
+---
+# Kolla-Ansible globals.yml — minimal OpenStack for Ironic bare-metal provisioning.
+# Full reference: https://docs.openstack.org/kolla-ansible/latest/reference/
+#
+# After editing, run:
+#   make kolla-bootstrap   # installs Docker + deps on the VM
+#   make kolla-prechecks   # validates this config
+#   make kolla-deploy      # deploys containers
+
+# ── Base ──────────────────────────────────────────────────────────────────────
+kolla_base_distro: "debian"
+kolla_install_type: "source"
+openstack_release: "2026.1"   # matches kolla-ansible 22.x (Epoxy)
+docker_registry: "quay.io"
+docker_namespace: "openstack.kolla"
+
+# ── Networking ────────────────────────────────────────────────────────────────
+# TODO: verify these interface names after first boot of the openstack VM
+# Run `ip link show` on the VM to confirm.
+network_interface: "enp0s3"               # management + API network (192.0.2.10)
+neutron_external_interface: "enp0s4"      # dedicated second NIC for Neutron external bridge no IP needed
+                                          # Neutron/linuxbridge takes this over; no IP needed on it
+kolla_internal_vip_address: "192.0.2.10"
+
+# Single-node deployment — no HA, no HAProxy, no ProxySQL needed
+enable_haproxy: "no"
+enable_proxysql: "no"
+
+# ── TLS ───────────────────────────────────────────────────────────────────────
+kolla_enable_tls_internal: "no"
+kolla_enable_tls_external: "no"
+
+# ── Enabled services — minimal Ironic stack ───────────────────────────────────
+enable_keystone: "yes"
+enable_glance: "yes"
+enable_neutron: "yes"
+enable_ironic: "yes"
+enable_ironic_neutron_agent: "yes"
+enable_horizon: "yes"           # useful for debugging; disable if memory is tight
+
+# ── Disabled services — no VM compute, no storage services ───────────────────
+enable_nova: "no"
+enable_cinder: "no"
+enable_swift: "no"
+enable_heat: "no"
+enable_placement: "no"
+enable_barbican: "no"
+enable_designate: "no"
+enable_octavia: "no"
+enable_manila: "no"
+enable_senlin: "no"
+enable_trove: "no"
+enable_zun: "no"
+
+# ── Neutron ───────────────────────────────────────────────────────────────────
+neutron_plugin_agent: "linuxbridge"
+
+# ── Ironic ────────────────────────────────────────────────────────────────────
+ironic_dnsmasq_interface: "{{ network_interface }}"
+ironic_cleaning_network: "provisioning-net"
+ironic_provisioning_network: "provisioning-net"
+ironic_dnsmasq_dhcp_ranges:
+  - range: "192.0.2.100,192.0.2.200,255.255.255.0"
+    routers: "192.0.2.1"
+
+# ── Glance ────────────────────────────────────────────────────────────────────
+# Store images on local filesystem (no Ceph/Swift)
+glance_backend_file: "yes"
+glance_file_datadir_volume: "/var/lib/glance/images"
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+openstack_logging_debug: "False"

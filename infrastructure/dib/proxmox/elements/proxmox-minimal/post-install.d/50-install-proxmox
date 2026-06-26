@@ -1,0 +1,224 @@
+#!/bin/bash
+# Install Proxmox VE packages and configure the system for Ironic bare-metal boot.
+# Runs in post-install.d so prerequisite packages (gnupg, curl, etc.) from
+# package-installs.yaml are already present.
+set -eux
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Pre-seed postfix to avoid interactive prompt (pulled in as a proxmox-ve dep)
+echo "postfix postfix/mailname string proxmox.local"        | debconf-set-selections
+echo "postfix postfix/main_mailer_type string 'Local only'" | debconf-set-selections
+
+# ── Debian and Proxmox VE apt repositories ───────────────────────────────────
+# Keep the normal Debian repositories available for baseline tools that are not
+# shipped by the Proxmox repository itself, such as ipmitool.
+cat > /etc/apt/sources.list.d/debian.sources <<'EOF'
+Types: deb
+URIs: http://deb.debian.org/debian
+Suites: trixie trixie-updates
+Components: main contrib non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: http://security.debian.org/debian-security
+Suites: trixie-security
+Components: main contrib non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+rm -f \
+    /etc/apt/sources.list.d/default.list \
+    /etc/apt/sources.list.d/updates.list \
+    /etc/apt/sources.list.d/security.list \
+    /etc/apt/sources.list.d/.list
+
+curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg \
+    -o /etc/apt/trusted.gpg.d/proxmox-release-trixie.gpg
+
+cat > /etc/apt/sources.list.d/pve.list <<'EOF'
+deb http://download.proxmox.com/debian/pve trixie pve-no-subscription
+EOF
+
+# Disable enterprise repo (requires paid subscription — writing a no-op file
+# prevents the apt warning about a missing sources.list entry)
+cat > /etc/apt/sources.list.d/pve-enterprise.list <<'EOF'
+# deb https://enterprise.proxmox.com/debian/pve trixie pve-enterprise
+EOF
+rm -f /etc/apt/sources.list.d/pve-enterprise.sources
+
+# Block signed kernel — its postinst enrolls a MOK certificate via efibootmgr,
+# which fails in a DIB chroot. proxmox-default-kernel pulls in the unsigned build.
+mkdir -p /etc/apt/preferences.d
+cat > /etc/apt/preferences.d/no-pve-signed-kernel <<'EOF'
+Package: proxmox-kernel-*-pve-signed
+Pin: release *
+Pin-Priority: -1
+EOF
+
+# ── Cloud-init ConfigDrive datasource (for Ironic hostname / metadata) ───────
+mkdir -p /etc/cloud/cloud.cfg.d
+cat > /etc/cloud/cloud.cfg.d/99-ironic.cfg <<'EOF'
+datasource_list: [ConfigDrive, None]
+EOF
+
+apt-get update
+
+# ── Divert commands that fail inside a DIB chroot ────────────────────────────
+# proxmox-boot-tool's kernel hook calls `unshare --mount` to sync the ESP;
+# that fails without real namespaces. Divert both hook dirs and the sync binary.
+_noop_hook() {
+    local dir="$1" name="$2"
+    mkdir -p "$dir"
+    dpkg-divert --local --rename --add "$dir/$name" || true
+    printf '#!/bin/sh\nexit 0\n' > "$dir/$name"
+    chmod +x "$dir/$name"
+}
+_noop_hook /etc/kernel/postinst.d   zz-proxmox-boot
+_noop_hook /etc/kernel/postrm.d    zz-proxmox-boot
+
+mkdir -p /etc/initramfs/post-update.d
+dpkg-divert --local --rename --add /etc/initramfs/post-update.d/proxmox-boot-sync || true
+printf '#!/bin/sh\nexit 0\n' > /etc/initramfs/post-update.d/proxmox-boot-sync
+chmod +x /etc/initramfs/post-update.d/proxmox-boot-sync
+
+# Divert at known paths — register unconditionally so dpkg redirects the file
+# to <path>.distrib even if the owning package isn't installed yet.
+_noop_cmd() {
+    local path="$1"
+    mkdir -p "$(dirname "$path")"
+    dpkg-divert --local --rename --add "$path" || true
+    printf '#!/bin/sh\nexit 0\n' > "$path"
+    chmod +x "$path"
+}
+_noop_cmd /usr/sbin/update-initramfs   # kernel postinst regenerates initramfs
+_noop_cmd /sbin/modprobe               # pve-qemu-kvm postinst loads KVM modules
+_noop_cmd /sbin/udevadm                # various postinsts call udevadm settle
+_noop_cmd /usr/sbin/mokutil            # signed-kernel MOK enrollment
+_noop_cmd /usr/sbin/update-secureboot-policy
+_noop_cmd /usr/sbin/efibootmgr         # EFI boot entry manipulation
+
+_restore_diversion() {
+    local path="$1"
+
+    if dpkg-divert --list "$path" | grep -q .; then
+        if [ -e "${path}.distrib" ]; then
+            rm -f "$path"
+            dpkg-divert --local --rename --remove "$path"
+        else
+            dpkg-divert --local --remove "$path"
+            rm -f "$path"
+        fi
+    fi
+}
+
+# ── Install Proxmox VE ───────────────────────────────────────────────────────
+# proxmox-default-kernel is the meta-package for the current unsigned PVE kernel;
+# it avoids hard-coding a version and does not pull in the signed variant.
+apt-get install -y \
+    proxmox-default-kernel \
+    proxmox-ve \
+    grub-efi-amd64 \
+    grub-efi-amd64-bin
+
+# Remove the stock Debian kernel — Proxmox ships its own pve kernel
+apt-get remove -y --purge linux-image-amd64 'linux-image-6.*' || true
+apt-get autoremove -y --purge || true
+
+# ── Restore update-initramfs and generate initramfs for the PVE kernel ───────
+_restore_diversion /usr/sbin/update-initramfs
+_restore_diversion /sbin/modprobe
+_restore_diversion /sbin/udevadm
+_restore_diversion /usr/sbin/mokutil
+_restore_diversion /usr/sbin/update-secureboot-policy
+_restore_diversion /usr/sbin/efibootmgr
+
+PVE_KERNEL=$(ls /boot/vmlinuz-*-pve 2>/dev/null | sort -V | tail -1 | sed 's|/boot/vmlinuz-||')
+if [ -n "${PVE_KERNEL}" ]; then
+    echo "==> Generating initramfs for ${PVE_KERNEL}..."
+    update-initramfs -c -k "${PVE_KERNEL}"
+else
+    echo "WARNING: no PVE kernel found in /boot — initramfs not generated"
+fi
+
+# Regenerate GRUB config now that the PVE kernel is present
+update-grub || true
+
+_restore_diversion /etc/kernel/postinst.d/zz-proxmox-boot
+_restore_diversion /etc/kernel/postrm.d/zz-proxmox-boot
+_restore_diversion /etc/initramfs/post-update.d/proxmox-boot-sync
+
+# ── Extra kernel options ─────────────────────────────────────────────────────
+# pcie_aspm=off: avoids PCIe ASPM instability on some server boards (e.g. MJ11-EC1)
+mkdir -p /etc/default/grub.d
+cat > /etc/default/grub.d/proxmox-extra.cfg <<'EOF'
+GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX pcie_aspm=off"
+EOF
+update-grub || true
+
+# ── Networking ───────────────────────────────────────────────────────────────
+# Use systemd-networkd for DHCP bootstrap (avoids AppArmor dhclient conflicts).
+# Proxmox's AppArmor profile blocks dhclient unix socket creation on first boot.
+# The proxmox-network DIB element writes the catch-all networkd config.
+# Remove the dhclient AppArmor profile defensively so dhclient from any other
+# package can't trigger the denial either.
+systemctl enable systemd-networkd || true
+systemctl disable networking      || true
+rm -f /etc/apparmor.d/sbin.dhclient
+
+# Keep cloud-init enabled: Ironic uses the ConfigDrive datasource for hostname
+# and metadata, and the datasource list above prevents slow network probing.
+rm -f /etc/cloud/cloud-init.disabled
+
+# ── Proxmox bootstrap host identity ──────────────────────────────────────────
+# pve-cluster/pveproxy expect the local hostname to resolve before they start.
+# Ironic DHCP gives the address at first boot, so generate /etc/hosts from the
+# first routable IPv4 address rather than baking a static address into the image.
+cat > /usr/local/sbin/proxmox-bootstrap-hosts <<'EOF'
+#!/bin/sh
+set -eu
+
+host="$(hostname -s 2>/dev/null || true)"
+[ -n "$host" ] || host="proxmox"
+
+fqdn="$(hostname -f 2>/dev/null || true)"
+case "$fqdn" in
+    ""|localhost|localhost.localdomain) fqdn="$host.local" ;;
+esac
+
+ip_addr=""
+for _ in $(seq 1 30); do
+    ip_addr="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')"
+    [ -n "$ip_addr" ] && break
+    ip_addr="$(ip -4 -o addr show scope global up 2>/dev/null | awk 'NR == 1 {sub(/\/.*/, "", $4); print $4}')"
+    [ -n "$ip_addr" ] && break
+    sleep 1
+done
+
+{
+    echo "127.0.0.1 localhost"
+    echo "::1 localhost ip6-localhost ip6-loopback"
+    if [ -n "$ip_addr" ]; then
+        echo "$ip_addr $fqdn $host"
+    else
+        echo "127.0.1.1 $fqdn $host"
+    fi
+} > /etc/hosts
+EOF
+chmod +x /usr/local/sbin/proxmox-bootstrap-hosts
+
+cat > /etc/systemd/system/proxmox-bootstrap-hosts.service <<'EOF'
+[Unit]
+Description=Prepare Proxmox bootstrap hostname resolution
+After=cloud-init-local.service systemd-networkd.service
+Wants=cloud-init-local.service systemd-networkd.service
+Before=ssh.service pve-cluster.service pvedaemon.service pveproxy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/proxmox-bootstrap-hosts
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable proxmox-bootstrap-hosts.service || true

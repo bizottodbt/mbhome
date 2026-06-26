@@ -1,6 +1,28 @@
-# SOPS age private keys — NEVER commit
-*.agekey
-age.key
+# Local homelab values — IPs, MACs, BMC credentials, host-specific overrides
+local.mk
+infrastructure/ansible/inventory/hosts.local.yaml
+infrastructure/ansible/vars/homelab.local.yaml
+infrastructure/ansible/vars/proxmox-users.local.yaml
+infrastructure/ironic/nodes/proxmox-nodes.yaml
+
+# Kolla-Ansible — contains all OpenStack service passwords
+infrastructure/kolla-ansible/passwords.yml
+infrastructure/kolla-ansible/clouds.yaml
+# Kolla-Ansible generated admin credentials
+infrastructure/kolla-ansible/admin-openrc.sh
+infrastructure/kolla-ansible/admin-openrc-system.sh
+infrastructure/kolla-ansible/public-openrc.sh
+infrastructure/kolla-ansible/public-openrc-system.sh
+# Kolla-Ansible Python virtual environment
+infrastructure/kolla-ansible/.venv/
+# Kolla-Ansible runtime config rendered from local values
+infrastructure/kolla-ansible/globals.yml
+infrastructure/kolla-ansible/inventory/openstack-vm
+infrastructure/kolla-ansible/config/ironic.conf
+infrastructure/kolla-ansible/config/ironic/ipa.ipxe
+# Ironic Python Agent deploy images — large binaries, downloaded by make kolla-ipa-images
+infrastructure/kolla-ansible/config/ironic/ironic-agent*.kernel
+infrastructure/kolla-ansible/config/ironic/ironic-agent*.initramfs
 
 # Terraform state and local overrides
 *.tfstate
@@ -8,8 +30,7 @@ age.key
 *.tfstate.backup
 .terraform/
 .terraform.lock.hcl
-*.tfvars           # commit only *.sops.tfvars (encrypted)
-!*.sops.tfvars
+*.tfvars
 
 # kubeconfig fragments
 *.kubeconfig

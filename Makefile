@@ -1,0 +1,210 @@
+ANSIBLE_DIR       := infrastructure/ansible
+KOLLA_DIR         := infrastructure/kolla-ansible
+KOLLA_VENV        := $(KOLLA_DIR)/.venv
+KOLLA             := $(KOLLA_VENV)/bin/kolla-ansible
+KOLLA_OPTS        := --configdir $(KOLLA_DIR) -i $(KOLLA_DIR)/inventory/openstack-vm
+# Ensure venv's ansible-playbook is used, not the system homebrew one
+KOLLA_ENV         := PATH="$(CURDIR)/$(KOLLA_VENV)/bin:$$PATH"
+openstack_release := 2026.1
+ipa_kernel_image := ironic-deploy-kernel-$(openstack_release)
+ipa_initramfs_image := ironic-deploy-initramfs-$(openstack_release)
+ipa_kernel_file := ironic-agent-$(openstack_release).kernel
+ipa_initramfs_file := ironic-agent-$(openstack_release).initramfs
+
+-include local.mk
+
+ANSIBLE_INVENTORY_LOCAL := $(if $(wildcard $(ANSIBLE_DIR)/inventory/hosts.local.yaml),-i inventory/hosts.local.yaml,)
+ANSIBLE_INVENTORY_ROOT  := -i $(ANSIBLE_DIR)/inventory/hosts.yaml $(if $(wildcard $(ANSIBLE_DIR)/inventory/hosts.local.yaml),-i $(ANSIBLE_DIR)/inventory/hosts.local.yaml,)
+ANSIBLE_INVENTORY       := -i inventory/hosts.yaml $(ANSIBLE_INVENTORY_LOCAL)
+
+DIB_BASE := infrastructure/dib
+
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+
+help: ## Show available targets
+	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*##"}; {printf "  %-20s %s\n", $$1, $$2}'
+
+ansible-collections: ## Install Ansible collections used by infrastructure playbooks
+	cd $(ANSIBLE_DIR) && ansible-galaxy collection install -r collections/requirements.yaml
+
+openstack-vm: ## Deploy (or start) the openstack VM on Unraid
+	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/openstack-vm.yaml
+
+openstack-stack-stop: ## Stop Kolla/OpenStack systemd units and Docker for maintenance
+	ssh openstack 'set -e; \
+		units=$$(systemctl list-units "kolla-*-container.service" --no-legend --plain | awk "{print \$$1}"); \
+		if [ -n "$$units" ]; then sudo systemctl stop $$units; fi; \
+		sudo systemctl stop docker.socket || true; \
+		sudo systemctl stop docker || true; \
+		sudo systemctl stop containerd || true'
+
+openstack-stack-start: ## Start Docker and all Kolla/OpenStack systemd units after maintenance
+	ssh openstack 'set -e; \
+		sudo systemctl daemon-reload; \
+		sudo systemctl start containerd || true; \
+		sudo systemctl start docker; \
+		units=$$(systemctl list-unit-files "kolla-*-container.service" --no-legend | awk "{print \$$1}"); \
+		if [ -n "$$units" ]; then sudo systemctl start $$units; fi'
+
+openstack-stack-status: ## Show OpenStack VM mounts and Kolla container health
+	ssh openstack 'set -e; \
+		echo "==> Systemd"; \
+		systemctl is-active docker docker.socket containerd || true; \
+		echo ""; \
+		echo "==> Kolla units"; \
+		systemctl list-units "kolla-*-container.service" --no-legend --plain | awk "{print \$$1, \$$3, \$$4}" | sort; \
+		echo ""; \
+		echo "==> Mounts"; \
+		sudo findmnt /var/lib/openstack-data /var/lib/docker/volumes /var/lib/glance/images || true; \
+		echo ""; \
+		echo "==> Disk usage"; \
+		sudo df -h / /var/lib/openstack-data /var/lib/docker/volumes /var/lib/glance/images; \
+		echo ""; \
+		echo "==> Containers"; \
+		if systemctl is-active --quiet docker; then sudo docker ps --format "table {{.Names}}\t{{.Status}}" | sort; else echo "Docker is stopped"; fi'
+
+openstack-setup: ## Upload IPA images to Glance and create Ironic provisioning/cleaning networks
+	$(KOLLA_VENV)/bin/ansible-galaxy collection install openstack.cloud --upgrade
+	env -u OS_SYSTEM_SCOPE \
+		OPENSTACK_RELEASE=$(openstack_release) \
+		OS_PASSWORD=$$(grep keystone_admin_password $(KOLLA_DIR)/passwords.yml | awk '{print $$2}') \
+		$(KOLLA_ENV) $(KOLLA_VENV)/bin/ansible-playbook \
+		$(ANSIBLE_INVENTORY_ROOT) \
+		$(ANSIBLE_DIR)/playbooks/openstack-setup.yaml
+
+openstack-versions: ## Print the OpenStack service version inside every running Kolla container
+	@ssh openstack 'sudo docker ps --format "{{.Names}}" | sort | while read c; do \
+		ver=$$(sudo docker exec "$$c" /var/lib/openstack/bin/pip list --format columns 2>/dev/null \
+			| awk "NR>2" \
+			| grep -iE "^(keystone|glance[^-]|neutron[^-]|ironic[^-]|nova[^-]|cinder[^-]|heat[^-]|horizon|placement|ironic-python-agent) " \
+			| awk "{print \$$1\" \"\$$2}" | head -1); \
+		[ -n "$$ver" ] && printf "%-45s %s\\n" "$$c" "$$ver"; \
+	done'
+
+ironic-set-deploy-images: ## Set deploy_kernel + deploy_ramdisk on an Ironic node (usage: make ironic-set-deploy-images NODE=mbhome-proxmox-01)
+	@test -n "$(NODE)" || (echo "Usage: make ironic-set-deploy-images NODE=<node-name>"; exit 1)
+	@set -e; \
+	source $(KOLLA_DIR)/admin-openrc.sh; \
+	KERNEL_ID=$$(env -u OS_SYSTEM_SCOPE $(KOLLA_VENV)/bin/openstack image show $(ipa_kernel_image) -c id -f value); \
+	RAMDISK_ID=$$(env -u OS_SYSTEM_SCOPE $(KOLLA_VENV)/bin/openstack image show $(ipa_initramfs_image) -c id -f value); \
+	echo "Setting deploy_kernel=$$KERNEL_ID deploy_ramdisk=$$RAMDISK_ID on $(NODE)"; \
+	$(KOLLA_VENV)/bin/openstack baremetal node set $(NODE) \
+		--driver-info deploy_kernel=$$KERNEL_ID \
+		--driver-info deploy_ramdisk=$$RAMDISK_ID
+
+PROXMOX_PREFIX ?= 24
+PROXMOX_GATEWAY ?= 192.0.2.1
+PROXMOX_DNS ?= $(PROXMOX_GATEWAY)
+PROXMOX_MAC ?=
+ANSIBLE_HOST ?= $(or $(PROXMOX_IP),$(NODE))
+
+ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run baseline (usage: make ironic-deploy-proxmox NODE=mbhome-proxmox-01 PROXMOX_IP=192.0.2.51)
+	@test -n "$(NODE)" || (echo "Usage: make ironic-deploy-proxmox NODE=<node-name> [PROXMOX_IP=<static-ip>] [ANSIBLE_HOST=<ip-or-dns>]"; exit 1)
+	@test -n "$(ANSIBLE_HOST)" || (echo "Usage: make ironic-deploy-proxmox NODE=<node-name> [PROXMOX_IP=<static-ip>] [ANSIBLE_HOST=<ip-or-dns>]"; exit 1)
+	NODE="$(NODE)" \
+	ANSIBLE_HOST="$(ANSIBLE_HOST)" \
+	PROXMOX_IP="$(PROXMOX_IP)" \
+	PROXMOX_PREFIX="$(PROXMOX_PREFIX)" \
+	PROXMOX_GATEWAY="$(PROXMOX_GATEWAY)" \
+	PROXMOX_DNS="$(PROXMOX_DNS)" \
+	PROXMOX_MAC="$(PROXMOX_MAC)" \
+	KOLLA_DIR="$(CURDIR)/$(KOLLA_DIR)" \
+	KOLLA_VENV="$(CURDIR)/$(KOLLA_VENV)" \
+	ANSIBLE_DIR="$(CURDIR)/$(ANSIBLE_DIR)" \
+	./infrastructure/scripts/ironic-deploy-proxmox.sh
+
+proxmox-baseline: ## Configure deployed Proxmox nodes (usage: make proxmox-baseline LIMIT=mbhome-proxmox-01)
+	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/proxmox-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)
+
+# Internal: create/update the venv (not listed in help)
+_kolla-venv:
+	python3.12 -m venv $(KOLLA_VENV)
+	$(KOLLA_VENV)/bin/pip install --upgrade pip
+	$(KOLLA_VENV)/bin/pip install -r $(KOLLA_DIR)/requirements.txt
+	$(KOLLA_ENV) $(KOLLA_VENV)/bin/ansible-galaxy collection install \
+		git+https://opendev.org/openstack/ansible-collection-kolla,stable/2026.1 \
+		--force
+
+kolla-genpwd: _kolla-venv ## Create venv (if needed) and generate Kolla passwords
+	@if ! grep -qE '^[a-zA-Z_]' $(KOLLA_DIR)/passwords.yml 2>/dev/null; then \
+		cp $(KOLLA_VENV)/share/kolla-ansible/etc_examples/kolla/passwords.yml $(KOLLA_DIR)/passwords.yml; \
+	fi
+	$(KOLLA_VENV)/bin/kolla-genpwd --passwords $(KOLLA_DIR)/passwords.yml
+
+kolla-bootstrap: _kolla-venv ## Install Docker + Kolla deps on the openstack VM
+	$(KOLLA_ENV) $(KOLLA) bootstrap-servers $(KOLLA_OPTS)
+
+kolla-prechecks: _kolla-venv ## Validate Kolla-Ansible config before deploying
+	$(KOLLA_ENV) $(KOLLA) prechecks $(KOLLA_OPTS) --use-test-images
+
+kolla-deploy: _kolla-venv ## Deploy OpenStack services onto the openstack VM
+	$(KOLLA_ENV) $(KOLLA) deploy $(KOLLA_OPTS)
+
+kolla-post-deploy: _kolla-venv ## Generate admin openrc after a successful deploy
+	$(KOLLA_ENV) $(KOLLA) post-deploy $(KOLLA_OPTS)
+	@printf '# System-scoped credentials for Ironic baremetal commands.\n# Source admin-openrc.sh first, then this file.\nunset OS_PROJECT_NAME OS_PROJECT_DOMAIN_NAME OS_TENANT_NAME\nexport OS_SYSTEM_SCOPE=all\n' > $(KOLLA_DIR)/admin-openrc-system.sh
+	@echo "Admin credentials written to $(KOLLA_DIR)/admin-openrc.sh"
+	@echo "Source with: source $(KOLLA_DIR)/admin-openrc.sh"
+
+kolla-reconfigure: _kolla-venv ## Push config changes to running containers (use TAGS=ironic to limit scope)
+	$(KOLLA_ENV) $(KOLLA) reconfigure $(KOLLA_OPTS) $(if $(TAGS),--tags $(TAGS),)
+	@# Kolla regenerates ipa.ipxe on reconfigure, overwriting our ipa-api-url addition.
+	@# Redeploy the repo-managed version to the httpboot volume.
+	ssh openstack 'sudo cp /dev/stdin /var/lib/docker/volumes/ironic/_data/httpboot/ipa.ipxe' \
+		< $(KOLLA_DIR)/config/ironic/ipa.ipxe
+
+kolla-destroy: _kolla-venv ## WARNING: destroy all OpenStack containers and volumes on the VM
+	$(KOLLA_ENV) $(KOLLA) destroy --yes-i-really-really-mean-it $(KOLLA_OPTS)
+
+kolla-ipa-images: ## Build IPA kernel + initramfs on the OpenStack VM, pinned to the conductor's IPA version
+	@echo "==> Building IPA images on OpenStack VM (OpenStack $(openstack_release), ~20-40 min)..."
+	scp $(KOLLA_DIR)/build-ipa.sh openstack:/tmp/build-ipa.sh
+	ssh openstack "bash /tmp/build-ipa.sh /tmp/ipa-build $(openstack_release)"
+	@echo "==> Copying built images locally for Glance upload..."
+	mkdir -p $(KOLLA_DIR)/config/ironic
+	scp openstack:/tmp/ipa-build/$(ipa_kernel_file)    $(KOLLA_DIR)/config/ironic/$(ipa_kernel_file)
+	scp openstack:/tmp/ipa-build/$(ipa_initramfs_file) $(KOLLA_DIR)/config/ironic/$(ipa_initramfs_file)
+	@echo "==> Images ready: $(ipa_kernel_file), $(ipa_initramfs_file)"
+	@echo "==> Run 'make openstack-setup' to upload to Glance as $(ipa_kernel_image) and $(ipa_initramfs_image)."
+
+SSH_KEY_FILE ?= ~/.ssh/id_ed25519.pub
+DIB_ROOT_PASSWORD ?= ironic
+
+ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage: make ironic-build-image OS=proxmox [SSH_KEY_FILE=~/.ssh/other.pub])
+	@test -n "$(OS)" || (echo "Usage: make ironic-build-image OS=<os>  (e.g. OS=proxmox)"; exit 1)
+	@test -d "$(DIB_BASE)/$(OS)" || (echo "No DIB config found at $(DIB_BASE)/$(OS)"; exit 1)
+	@test -f $(SSH_KEY_FILE) || (echo "SSH key not found: $(SSH_KEY_FILE)"; exit 1)
+	@echo "==> Copying DIB elements for '$(OS)' to OpenStack VM..."
+	ssh openstack 'mkdir -p /tmp/dib-elements-$(OS)'
+	scp -r $(DIB_BASE)/$(OS)/elements/. openstack:/tmp/dib-elements-$(OS)/
+	scp $(DIB_BASE)/$(OS)/build.sh openstack:/tmp/dib-build-$(OS).sh
+	@echo "==> Building image on OpenStack VM (this takes ~15-30 min)..."
+	ssh openstack "sudo DIB_ROOT_SSH_KEY='$(shell cat $(SSH_KEY_FILE))' DIB_ROOT_PASSWORD='$(DIB_ROOT_PASSWORD)' bash /tmp/dib-build-$(OS).sh"
+	@echo "==> Uploading image to Glance from the VM (avoids local download)..."
+	@# Ensure the openstack CLI is available on the VM (installed in a venv to avoid system conflicts).
+	ssh openstack 'test -x /tmp/glance-upload-venv/bin/openstack || (python3 -m venv /tmp/glance-upload-venv && /tmp/glance-upload-venv/bin/pip install -q python-openstackclient)'
+	@set -e; \
+	source $(KOLLA_DIR)/admin-openrc.sh; \
+	UPLOAD_CMD="OS_AUTH_URL=$$OS_AUTH_URL \
+		OS_PROJECT_NAME=$$OS_PROJECT_NAME \
+		OS_USERNAME=$$OS_USERNAME \
+		OS_PASSWORD=$$OS_PASSWORD \
+		OS_USER_DOMAIN_NAME=$$OS_USER_DOMAIN_NAME \
+		OS_PROJECT_DOMAIN_NAME=$$OS_PROJECT_DOMAIN_NAME \
+		OS_REGION_NAME=$$OS_REGION_NAME \
+		/tmp/glance-upload-venv/bin/openstack image create \
+			--disk-format raw \
+			--container-format bare \
+			--file /tmp/$(OS).raw \
+			$(OS)"; \
+	if ! ssh openstack "$$UPLOAD_CMD"; then \
+		echo ""; \
+		echo "ERROR: Glance upload failed, but the image should still be on the OpenStack VM at /tmp/$(OS).raw"; \
+		echo ""; \
+		echo "Retry manually with:"; \
+		echo "  source $(KOLLA_DIR)/admin-openrc.sh"; \
+		echo "  ssh openstack \"$$UPLOAD_CMD\""; \
+		exit 1; \
+	fi
+	@echo "==> Done. Image '$(OS)' is now in Glance."

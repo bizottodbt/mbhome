@@ -1,0 +1,57 @@
+---
+# Copy to proxmox-nodes.yaml and fill in local BMC credentials, BMC addresses,
+# and PXE NIC MAC addresses. proxmox-nodes.yaml is git-ignored.
+#
+# Register:
+#   openstack baremetal create infrastructure/ironic/nodes/proxmox-nodes.yaml
+#
+# Then for each node:
+#   openstack baremetal node manage <name>
+#   openstack baremetal node provide <name>
+
+nodes:
+  - name: mbhome-proxmox-01
+    driver: redfish
+    driver_info:
+      redfish_address: "https://192.0.2.21"
+      redfish_username: "CHANGE_ME"
+      redfish_password: "CHANGE_ME"
+      redfish_verify_ca: false
+      redfish_system_id: "/redfish/v1/Systems/Self"
+    deploy_interface: direct
+    network_interface: noop
+    automated_clean: true
+    properties:
+      memory_mb: 131072
+      cpus: 8
+      local_gb: 119
+      capabilities: "boot_mode:uefi,boot_option:local"
+      root_device:
+        name: /dev/sda
+    ports:
+      - address: "00:00:00:00:00:01"
+        physical_network: physnet1
+        pxe_enabled: true
+
+  - name: mbhome-proxmox-02
+    driver: redfish
+    driver_info:
+      redfish_address: "https://192.0.2.22"
+      redfish_username: "CHANGE_ME"
+      redfish_password: "CHANGE_ME"
+      redfish_verify_ca: false
+      redfish_system_id: "/redfish/v1/Systems/Self"
+    deploy_interface: direct
+    network_interface: noop
+    automated_clean: true
+    properties:
+      memory_mb: 131072
+      cpus: 8
+      local_gb: 119
+      capabilities: "boot_mode:uefi,boot_option:local"
+      root_device:
+        name: /dev/sda
+    ports:
+      - address: "00:00:00:00:00:02"
+        physical_network: physnet1
+        pxe_enabled: true
