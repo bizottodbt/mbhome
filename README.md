@@ -250,6 +250,20 @@ curl -k -u CHANGE_ME:CHANGE_ME https://<bmc-ip>/redfish/v1/Systems
 curl -k -u CHANGE_ME:CHANGE_ME https://<bmc-ip>/redfish/v1/Systems/Self
 ```
 
+### BMC baseline
+
+After filling in `bmc_address`, `bmc_username`, and `bmc_password` in
+git-ignored `infrastructure/ansible/inventory/hosts.local.yaml`, apply the
+MJ11 quiet fan profile:
+
+```bash
+make bmc-baseline LIMIT=mbhome-proxmox-01
+```
+
+The playbook logs in to the BMC web API, imports
+[`infrastructure/ansible/files/bmc/mj11-quiet-fanprofile.json`](infrastructure/ansible/files/bmc/mj11-quiet-fanprofile.json),
+sets the active fan profile to `quiet`, verifies it, and logs out.
+
 ### Register nodes
 
 ```bash
@@ -366,7 +380,8 @@ watch -n5 openstack baremetal node show mbhome-proxmox-01 -c provision_state -c 
 
 Ironic will PXE-boot the node into IPA, stream the raw image onto `/dev/sda`, then power-cycle into the installed OS.
 
-To deploy and then automatically run the Proxmox baseline playbook once the installed OS is active and reachable over SSH:
+To deploy and then automatically run the Proxmox baseline plus BMC baseline once
+the installed OS is active and reachable over SSH:
 
 ```bash
 make ironic-deploy-proxmox NODE=mbhome-proxmox-01 PROXMOX_IP=192.0.2.51
@@ -430,8 +445,9 @@ catch-all DHCP bootstrap file. NFS continues to mount through the management
 address `192.0.2.48` until the USW-Pro-48 SFP+ storage VLAN is configured and
 tested.
 
-The `make ironic-deploy-proxmox` wrapper also runs this baseline from the real
-inventory, so post-deploy configuration uses the same per-node variables.
+The `make ironic-deploy-proxmox` wrapper also runs this baseline and the BMC
+baseline from the real inventory, so post-deploy configuration uses the same
+per-node variables.
 
 NFS mounts are controlled by the `proxmox_nfs_mounts` list in
 `infrastructure/ansible/inventory/hosts.local.yaml`; use

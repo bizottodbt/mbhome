@@ -1,12 +1,176 @@
 ---
-# BMC baseline configuration for MJ11-EC1 nodes.
-# Configures IPMI access, sets boot order, validates Redfish connectivity.
-#
-# TODO: implement after nodes are assembled and BMC IPs are assigned (Phase 1).
 - name: BMC baseline
   hosts: proxmox_nodes
   gather_facts: false
+  vars:
+    _bmc_default_fan_profile_file: "{{ playbook_dir }}/../files/bmc/mj11-quiet-fanprofile.json"
+    _bmc_default_fan_profile_name: quiet
+
   tasks:
-    - name: TODO — configure IPMI access
-      ansible.builtin.debug:
-        msg: "Phase 1: implement BMC baseline (IPMI user, boot order, Redfish check)"
+    - name: Check quiet fan profile file
+      ansible.builtin.stat:
+        path: "{{ bmc_fan_profile_file | default(_bmc_default_fan_profile_file) }}"
+      register: _bmc_fan_profile_file
+      delegate_to: localhost
+
+    - name: Require quiet fan profile file
+      ansible.builtin.assert:
+        that:
+          - _bmc_fan_profile_file.stat.exists
+        fail_msg: "Missing BMC fan profile file: {{ bmc_fan_profile_file | default(_bmc_default_fan_profile_file) }}"
+
+    - name: Load quiet fan profile
+      ansible.builtin.set_fact:
+        _bmc_fan_profile: "{{ lookup('ansible.builtin.file', bmc_fan_profile_file | default(_bmc_default_fan_profile_file)) | from_json }}"
+      delegate_to: localhost
+
+    - name: Check BMC connection variables
+      ansible.builtin.assert:
+        that:
+          - bmc_address is defined
+          - bmc_username is defined
+          - bmc_password is defined
+          - bmc_address | length > 0
+          - bmc_username | length > 0
+          - bmc_password | length > 0
+        fail_msg: >-
+          Define bmc_address, bmc_username, and bmc_password for {{ inventory_hostname }}
+          in infrastructure/ansible/inventory/hosts.local.yaml.
+
+    - name: Normalize BMC base URL
+      ansible.builtin.set_fact:
+        _bmc_base_url: "{{ bmc_address | regex_replace('/+$', '') }}"
+
+    - name: Log in to BMC web API
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/session"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "{{ bmc_username }}"
+          password: "{{ bmc_password }}"
+        return_content: true
+        status_code: 200
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      register: _bmc_login
+      delegate_to: localhost
+      no_log: true
+
+    - name: Require BMC login session
+      ansible.builtin.assert:
+        that:
+          - _bmc_login.json.ok is defined
+          - _bmc_login.json.ok | int == 0
+          - _bmc_login.json.CSRFToken is defined
+          - _bmc_login.cookies_string is defined
+        fail_msg: "BMC login failed for {{ inventory_hostname }}."
+      no_log: true
+
+    - name: Import quiet fan profile
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/settings/fanprofile"
+        method: POST
+        body_format: json
+        body: "{{ _bmc_fan_profile }}"
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        status_code:
+          - 200
+          - 201
+          - 204
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      register: _bmc_import_profile
+      delegate_to: localhost
+      no_log: true
+
+    - name: Read BMC fan profile collection
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/settings/fanprofile/collection"
+        method: GET
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        return_content: true
+        status_code: 200
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      register: _bmc_fan_profile_collection
+      delegate_to: localhost
+      no_log: true
+
+    - name: Confirm quiet fan profile exists
+      ansible.builtin.assert:
+        that:
+          - (bmc_fan_profile_name | default(_bmc_default_fan_profile_name)) in ((_bmc_fan_profile_collection.json | default([])) | map(attribute='strName') | list)
+        fail_msg: >-
+          Fan profile import returned success, but profile
+          {{ bmc_fan_profile_name | default(_bmc_default_fan_profile_name) }}
+          was not found in the BMC profile collection.
+
+    - name: Activate quiet fan profile
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/settings/fanprofile/mode"
+        method: POST
+        body_format: json
+        body:
+          strMode: "{{ bmc_fan_profile_name | default(_bmc_default_fan_profile_name) }}"
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        status_code:
+          - 200
+          - 201
+          - 204
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      register: _bmc_activate_profile
+      delegate_to: localhost
+      no_log: true
+
+    - name: Read active fan profile mode
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/settings/fanprofile/mode"
+        method: GET
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        return_content: true
+        status_code: 200
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      register: _bmc_fan_profile_mode
+      delegate_to: localhost
+      until: _bmc_fan_profile_mode.json.strMode | default('') == (bmc_fan_profile_name | default(_bmc_default_fan_profile_name))
+      retries: "{{ bmc_mode_verify_retries | default(10) }}"
+      delay: "{{ bmc_mode_verify_delay | default(2) }}"
+      no_log: true
+
+    - name: Confirm quiet fan profile is active
+      ansible.builtin.assert:
+        that:
+          - _bmc_fan_profile_mode.json.strMode | default('') == (bmc_fan_profile_name | default(_bmc_default_fan_profile_name))
+        fail_msg: >-
+          Fan profile import completed, but active mode is
+          {{ _bmc_fan_profile_mode.json.strMode | default('unknown') }}
+          instead of {{ bmc_fan_profile_name | default(_bmc_default_fan_profile_name) }}.
+        success_msg: "BMC fan profile '{{ bmc_fan_profile_name | default(_bmc_default_fan_profile_name) }}' is active on {{ inventory_hostname }}."
+
+    - name: Log out of BMC web API
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/session"
+        method: DELETE
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        status_code:
+          - 200
+          - 204
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost
+      no_log: true

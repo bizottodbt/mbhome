@@ -17,6 +17,11 @@ all:
       vars:
         proxmox_dns_servers:
           - 192.0.2.1
+        bmc_username: admin
+        bmc_password: CHANGE_ME
+        bmc_validate_certs: false
+        proxmox_10gbe_mtu: 1500
+        proxmox_nfs_server: 192.0.2.48
         proxmox_nfs_mounts:
           - path: /mnt/proxmox-vms
             src: /mnt/user/proxmox-vms
@@ -33,8 +38,7 @@ all:
       hosts:
         mbhome-proxmox-01:
           ansible_host: 192.0.2.51
-          proxmox_10gbe_mtu: 1500
-          proxmox_nfs_server: 192.0.2.48
+          bmc_address: https://192.0.2.20
           proxmox_10gbe_links:
             - interface: enp5s0f0
               address: 198.51.100.11
@@ -43,8 +47,7 @@ all:
 
         mbhome-proxmox-02:
           ansible_host: 192.0.2.52
-          proxmox_10gbe_mtu: 1500
-          proxmox_nfs_server: 192.0.2.48
+          bmc_address: https://192.0.2.21
           proxmox_10gbe_links:
             - interface: enp5s0f0
               address: 198.51.100.12
@@ -53,5 +56,5 @@ all:
 
         mbhome-proxmox-03:
           ansible_host: 192.0.2.53
-          proxmox_nfs_server: 192.0.2.48
+          bmc_address: https://192.0.2.22
           proxmox_10gbe_links: []

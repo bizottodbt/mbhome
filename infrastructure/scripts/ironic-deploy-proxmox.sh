@@ -15,6 +15,12 @@ KOLLA_DIR="${KOLLA_DIR:-${repo_root}/infrastructure/kolla-ansible}"
 KOLLA_VENV="${KOLLA_VENV:-${KOLLA_DIR}/.venv}"
 ANSIBLE_DIR="${ANSIBLE_DIR:-${repo_root}/infrastructure/ansible}"
 OPENSTACK="${KOLLA_VENV}/bin/openstack"
+ANSIBLE_INVENTORY=("-i" "inventory/hosts.yaml")
+ANSIBLE_INVENTORY_ABS=("-i" "${ANSIBLE_DIR}/inventory/hosts.yaml")
+if [[ -f "${ANSIBLE_DIR}/inventory/hosts.local.yaml" ]]; then
+    ANSIBLE_INVENTORY+=("-i" "inventory/hosts.local.yaml")
+    ANSIBLE_INVENTORY_ABS+=("-i" "${ANSIBLE_DIR}/inventory/hosts.local.yaml")
+fi
 
 source "${KOLLA_DIR}/admin-openrc.sh"
 
@@ -111,7 +117,7 @@ done
 if [[ -z "${ANSIBLE_HOST}" || "${ANSIBLE_HOST}" == "${NODE}" ]]; then
     inventory_ansible_host="$(
         ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
-            ansible-inventory -i "${ANSIBLE_DIR}/inventory/hosts.yaml" --host "${NODE}" 2>/dev/null \
+            ansible-inventory "${ANSIBLE_INVENTORY_ABS[@]}" --host "${NODE}" 2>/dev/null \
         | python3 -c 'import json, sys; print(json.load(sys.stdin).get("ansible_host", ""))'
     )"
     if [[ -n "${inventory_ansible_host}" ]]; then
@@ -134,9 +140,17 @@ echo "==> Running Proxmox baseline on ${ANSIBLE_HOST}"
 (
     cd "${ANSIBLE_DIR}"
     ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
-        ansible-playbook -i "inventory/hosts.yaml" "playbooks/proxmox-baseline.yaml" \
+        ansible-playbook "${ANSIBLE_INVENTORY[@]}" "playbooks/proxmox-baseline.yaml" \
         --limit "${NODE}" \
         -e target_hosts=proxmox_nodes \
         -e ansible_host="${ANSIBLE_HOST}" \
         -e ansible_user=root
+)
+
+echo "==> Running BMC baseline for ${NODE}"
+(
+    cd "${ANSIBLE_DIR}"
+    ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
+        ansible-playbook "${ANSIBLE_INVENTORY[@]}" "playbooks/bmc-baseline.yaml" \
+        --limit "${NODE}"
 )

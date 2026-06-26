@@ -94,7 +94,9 @@ Thanks to [rvbg](https://github.com/rvbg/mainboard-io-shields/tree/main/designs/
 - [120mm Fan adapter](https://www.printables.com/model/648244-120mm-fan-adapter-for-gigabyte-mj11-ec1-and-mj11-e)
 
 ## Fan Profile
-Apply the profile via [json](./quiet_fanprofile.json) or via manually creating in the UI. Remember that the default curve considers a lot of GPU sensors, so the different policies might keep your fans at 40%.
+Apply the profile via [`make bmc-baseline`](../README.md) or import
+[`mj11-quiet-fanprofile.json`](../infrastructure/ansible/files/bmc/mj11-quiet-fanprofile.json)
+manually in the UI. Remember that the default curve considers a lot of GPU sensors, so the different policies might keep your fans at 40%.
 
 BMC UI > Settings > Fan Profile > Import
 

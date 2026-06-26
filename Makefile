@@ -19,7 +19,7 @@ ANSIBLE_INVENTORY       := -i inventory/hosts.yaml $(ANSIBLE_INVENTORY_LOCAL)
 
 DIB_BASE := infrastructure/dib
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -99,7 +99,7 @@ PROXMOX_DNS ?= $(PROXMOX_GATEWAY)
 PROXMOX_MAC ?=
 ANSIBLE_HOST ?= $(or $(PROXMOX_IP),$(NODE))
 
-ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run baseline (usage: make ironic-deploy-proxmox NODE=mbhome-proxmox-01 PROXMOX_IP=192.0.2.51)
+ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run Proxmox + BMC baselines (usage: make ironic-deploy-proxmox NODE=mbhome-proxmox-01 PROXMOX_IP=192.0.2.51)
 	@test -n "$(NODE)" || (echo "Usage: make ironic-deploy-proxmox NODE=<node-name> [PROXMOX_IP=<static-ip>] [ANSIBLE_HOST=<ip-or-dns>]"; exit 1)
 	@test -n "$(ANSIBLE_HOST)" || (echo "Usage: make ironic-deploy-proxmox NODE=<node-name> [PROXMOX_IP=<static-ip>] [ANSIBLE_HOST=<ip-or-dns>]"; exit 1)
 	NODE="$(NODE)" \
@@ -116,6 +116,9 @@ ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run baseline (usage
 
 proxmox-baseline: ## Configure deployed Proxmox nodes (usage: make proxmox-baseline LIMIT=mbhome-proxmox-01)
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/proxmox-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)
+
+bmc-baseline: ## Configure node BMCs, including the quiet MJ11 fan profile (usage: make bmc-baseline LIMIT=mbhome-proxmox-01)
+	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/bmc-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)
 
 # Internal: create/update the venv (not listed in help)
 _kolla-venv:
