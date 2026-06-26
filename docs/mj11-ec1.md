@@ -4,7 +4,9 @@ A lot of information about this board can be found [here](https://forums.serveth
 
 This [blog](https://watchmysys.com/blog/2024/10/gigabyte-mj11-ec1-pcie-bifurcation/) has usefull tips on which adapters to buy, or not to buy, I can confirm I have successfully added a dual port 10 Gb SFP+ NIC using [this board](https://www.aliexpress.com/item/1005005811987501.html?spm=a2g0o.order_list.order_list_main.4.1a341802TjdCHO) and [this cable](https://www.aliexpress.com/item/1005005811987501.html?spm=a2g0o.order_list.order_list_main.4.1a341802TjdCHO)
 
-[This](https://forums.servethehome.com/index.php?threads/gigabyte-mj11-ec1-epyc-3151-mystery.41395/post-444153) is also a good knowledge condensation in the Serve the Home thread. 
+[This](https://forums.servethehome.com/index.php?threads/gigabyte-mj11-ec1-epyc-3151-mystery.41395/post-444153) is also a good knowledge condensation in the Serve the Home thread.
+
+[Manual](https://download.gigabyte.com/FileList/Manual/server_manual_MJ11-EC0_e_v10.pdf) for MJ11-EC0, not the same board, but close enough for reference.
 
 - CPU: AMD EPYC Embedded 3151
 - Frequency: 2,7 GHz / 2,9 GHz
