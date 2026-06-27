@@ -1,0 +1,12 @@
+# Copy this file to bmc-users.local.yaml and replace the example values.
+# bmc-users.local.yaml is git-ignored because it contains BMC credentials.
+#
+# These users are managed only on the BMC web UI. They are intentionally
+# separate from Proxmox/Linux users so BMC access can be bootstrapped before
+# OpenStack/Ironic deploys an operating system to the node.
+bmc_admin_users:
+  - name: bizotto
+    password: "CHANGE_ME"
+    # Optional. Used by BMCs managed through the web API.
+    email: "YOUR_EMAIL_HERE"
+    enabled: true

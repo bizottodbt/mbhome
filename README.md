@@ -252,17 +252,42 @@ curl -k -u CHANGE_ME:CHANGE_ME https://<bmc-ip>/redfish/v1/Systems/Self
 
 ### BMC baseline
 
-After filling in `bmc_address`, `bmc_username`, and `bmc_password` in
-git-ignored `infrastructure/ansible/inventory/hosts.local.yaml`, apply the
-MJ11 quiet fan profile:
+Run the BMC baseline before creating or registering the node in OpenStack. The
+baseline manages BMC-local users and the fan profile, and Ironic should be
+created with the final BMC credentials.
+
+After filling in the `bmc_controllers` inventory in git-ignored
+`infrastructure/ansible/inventory/hosts.local.yaml`, apply the BMC baseline:
 
 ```bash
-make bmc-baseline LIMIT=mbhome-proxmox-01
+make bmc-baseline LIMIT=mbhome-proxmox-01-bmc
+make bmc-baseline LIMIT=mbhome-nas-01-bmc
 ```
 
-The playbook logs in to the BMC web API, imports
+The playbook manages BMC-local administrator users. MJ11 BMCs use the BMC web
+API for user management and also import
 [`infrastructure/ansible/files/bmc/mj11-quiet-fanprofile.json`](infrastructure/ansible/files/bmc/mj11-quiet-fanprofile.json),
-sets the active fan profile to `quiet`, verifies it, and logs out.
+set the active fan profile to `quiet`, verify it, and log out. The ASRock Rack
+D1541D4U-2T8R / Unraid BMC uses `bmc_user_provider: ipmi` because its HTTPS
+stack can fail modern TLS handshakes; it also has `bmc_manage_fan_profile:
+false`, so the fan-profile API calls are skipped there. The IPMI path requires
+`ipmitool` on the Ansible controller. If the ASRock BMC rejects the default
+IPMI settings, adjust `bmc_ipmi_interface` (`lanplus` or `lan`) and
+`bmc_ipmi_channel` in `hosts.local.yaml`. Slot `1` is reserved on many IPMI
+BMCs, so `bmc_ipmi_min_user_id` defaults to `2`.
+
+It also loads git-ignored
+`infrastructure/ansible/vars/bmc-users.local.yaml`: users in `bmc_admin_users`
+with a plaintext `password` are created or updated as BMC administrators. The
+playbook only changes the BMC users explicitly listed in `bmc_admin_users`.
+
+Start the BMC user vars from
+[`infrastructure/ansible/vars/bmc-users.local.example.yaml`](infrastructure/ansible/vars/bmc-users.local.example.yaml)
+and keep the real `bmc-users.local.yaml` local only.
+
+The Unraid server BMC is represented in the inventory under
+`bmc_asrock_d1541d4u_2t8r` because the ASRock Rack D1541D4U-2T8R uses separate
+BMC credentials and does not use the MJ11 fan profile workflow.
 
 ### Register nodes
 
@@ -380,8 +405,8 @@ watch -n5 openstack baremetal node show mbhome-proxmox-01 -c provision_state -c 
 
 Ironic will PXE-boot the node into IPA, stream the raw image onto `/dev/sda`, then power-cycle into the installed OS.
 
-To deploy and then automatically run the Proxmox baseline plus BMC baseline once
-the installed OS is active and reachable over SSH:
+To deploy and then automatically run the Proxmox baseline once the installed OS
+is active and reachable over SSH:
 
 ```bash
 make ironic-deploy-proxmox NODE=mbhome-proxmox-01 PROXMOX_IP=192.0.2.51
@@ -445,9 +470,10 @@ catch-all DHCP bootstrap file. NFS continues to mount through the management
 address `192.0.2.48` until the USW-Pro-48 SFP+ storage VLAN is configured and
 tested.
 
-The `make ironic-deploy-proxmox` wrapper also runs this baseline and the BMC
-baseline from the real inventory, so post-deploy configuration uses the same
-per-node variables.
+The `make ironic-deploy-proxmox` wrapper also runs this baseline from the real
+inventory, so post-deploy configuration uses the same per-node variables. It
+does not run the BMC baseline; run `make bmc-baseline LIMIT=<node-bmc>` before
+registering the node in OpenStack.
 
 NFS mounts are controlled by the `proxmox_nfs_mounts` list in
 `infrastructure/ansible/inventory/hosts.local.yaml`; use

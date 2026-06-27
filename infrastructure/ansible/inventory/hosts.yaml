@@ -15,6 +15,26 @@ all:
         openstack:
           ansible_user: "{{ lookup('env', 'USER') }}"
 
+    bmc_controllers:
+      vars:
+        bmc_validate_certs: false
+      children:
+        bmc_mj11:
+          vars:
+            bmc_manage_fan_profile: true
+            bmc_user_provider: web_api
+          hosts:
+            mbhome-proxmox-01-bmc: {}
+            mbhome-proxmox-02-bmc: {}
+            mbhome-proxmox-03-bmc: {}
+
+        bmc_asrock_d1541d4u_2t8r:
+          vars:
+            bmc_manage_fan_profile: false
+            bmc_user_provider: ipmi
+          hosts:
+            mbhome-nas-01-bmc: {}
+
     proxmox_nodes:
       vars:
         proxmox_dns_search: "{{ homelab_dns_search | default('lan') }}"

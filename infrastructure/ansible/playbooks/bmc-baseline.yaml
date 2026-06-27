@@ -1,28 +1,49 @@
 ---
 - name: BMC baseline
-  hosts: proxmox_nodes
+  hosts: "{{ target_hosts | default('bmc_controllers') }}"
   gather_facts: false
   vars:
     _bmc_default_fan_profile_file: "{{ playbook_dir }}/../files/bmc/mj11-quiet-fanprofile.json"
     _bmc_default_fan_profile_name: quiet
+    bmc_users_file: "{{ playbook_dir }}/../vars/bmc-users.local.yaml"
 
   tasks:
+    - name: Check for local BMC user vars
+      ansible.builtin.stat:
+        path: "{{ bmc_users_file }}"
+      register: _bmc_users_file
+      delegate_to: localhost
+
+    - name: Load local BMC user vars
+      ansible.builtin.include_vars:
+        file: "{{ bmc_users_file }}"
+      no_log: true
+      when: _bmc_users_file.stat.exists
+
     - name: Check quiet fan profile file
       ansible.builtin.stat:
         path: "{{ bmc_fan_profile_file | default(_bmc_default_fan_profile_file) }}"
       register: _bmc_fan_profile_file
       delegate_to: localhost
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Require quiet fan profile file
       ansible.builtin.assert:
         that:
           - _bmc_fan_profile_file.stat.exists
         fail_msg: "Missing BMC fan profile file: {{ bmc_fan_profile_file | default(_bmc_default_fan_profile_file) }}"
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Load quiet fan profile
       ansible.builtin.set_fact:
         _bmc_fan_profile: "{{ lookup('ansible.builtin.file', bmc_fan_profile_file | default(_bmc_default_fan_profile_file)) | from_json }}"
       delegate_to: localhost
+      when: bmc_manage_fan_profile | default(false) | bool
+
+    - name: Normalize BMC behavior
+      ansible.builtin.set_fact:
+        _bmc_user_provider: "{{ bmc_user_provider | default('web_api') }}"
+        _bmc_requires_web_api: "{{ (bmc_user_provider | default('web_api')) == 'web_api' or (bmc_manage_fan_profile | default(false) | bool) }}"
 
     - name: Check BMC connection variables
       ansible.builtin.assert:
@@ -41,6 +62,19 @@
       ansible.builtin.set_fact:
         _bmc_base_url: "{{ bmc_address | regex_replace('/+$', '') }}"
 
+    - name: Normalize BMC IPMI host
+      ansible.builtin.set_fact:
+        _bmc_ipmi_host: >-
+          {{
+            bmc_ipmi_host | default(
+              bmc_address
+              | regex_replace('^https?://', '')
+              | regex_replace('/.*$', '')
+              | regex_replace(':\\d+$', '')
+            )
+          }}
+      when: _bmc_user_provider == 'ipmi'
+
     - name: Log in to BMC web API
       ansible.builtin.uri:
         url: "{{ _bmc_base_url }}/api/session"
@@ -56,6 +90,7 @@
       register: _bmc_login
       delegate_to: localhost
       no_log: true
+      when: _bmc_requires_web_api | bool
 
     - name: Require BMC login session
       ansible.builtin.assert:
@@ -66,6 +101,531 @@
           - _bmc_login.cookies_string is defined
         fail_msg: "BMC login failed for {{ inventory_hostname }}."
       no_log: true
+      when: _bmc_requires_web_api | bool
+
+    - name: Build BMC admin user list
+      ansible.builtin.set_fact:
+        _bmc_admin_users: >-
+          {{
+            bmc_admin_users | default([])
+            | selectattr('password', 'defined')
+            | rejectattr('enabled', 'equalto', false)
+            | list
+          }}
+      no_log: true
+
+    - name: Report disabled BMC user management
+      ansible.builtin.debug:
+        msg: >-
+          No enabled BMC admin users found in {{ bmc_users_file }}. Set
+          enabled: true for each bmc_admin_users entry that should be managed.
+      when:
+        - bmc_admin_users is defined
+        - _bmc_admin_users | length == 0
+
+    - name: Validate BMC admin user passwords
+      ansible.builtin.assert:
+        that:
+          - item.password | length >= 6
+          - item.password | length <= 20
+        fail_msg: >-
+          BMC password for {{ item.name }} must be 6-20 characters for this
+          AST2500 web UI. Adjust the password in bmc-users.local.yaml or set
+          enabled: false for that BMC user.
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+
+    - name: Check ipmitool for IPMI BMC user management
+      ansible.builtin.shell: command -v ipmitool
+      register: _bmc_ipmitool
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      when:
+        - _bmc_user_provider == 'ipmi'
+        - _bmc_admin_users | length > 0
+
+    - name: Require ipmitool for IPMI BMC user management
+      ansible.builtin.assert:
+        that:
+          - _bmc_ipmitool.rc == 0
+        fail_msg: >-
+          ipmitool is required on the Ansible controller for {{ inventory_hostname }}
+          because bmc_user_provider is ipmi. On macOS, install it with:
+          brew install ipmitool
+      when:
+        - _bmc_user_provider == 'ipmi'
+        - _bmc_admin_users | length > 0
+
+    - name: Ensure IPMI BMC admin users exist with desired passwords
+      ansible.builtin.shell: |
+        set -eu
+
+        bmc_ipmitool() {
+          IPMI_PASSWORD="$BMC_PASSWORD" ipmitool -I "$BMC_IPMI_INTERFACE" -H "$BMC_HOST" -U "$BMC_USERNAME" -E "$@"
+        }
+
+        desired_ipmitool() {
+          IPMI_PASSWORD="$BMC_DESIRED_PASSWORD" ipmitool -I "$BMC_IPMI_INTERFACE" -H "$BMC_HOST" -U "$BMC_DESIRED_USER" -E "$@"
+        }
+
+        user_list="$(bmc_ipmitool user list "$BMC_CHANNEL")"
+        user_exists=0
+        user_id="$(
+          printf '%s\n' "$user_list" |
+            awk -v wanted="$BMC_DESIRED_USER" -v min_id="$BMC_MIN_USER_ID" '
+              NR > 1 {
+                id = $1
+                if ((id + 0) < (min_id + 0)) {
+                  next
+                }
+                if ($2 == wanted) {
+                  print id
+                  exit
+                }
+              }
+            '
+        )"
+        if [ -n "$user_id" ]; then
+          user_exists=1
+        fi
+
+        if [ -z "$user_id" ]; then
+          user_id="$(
+            printf '%s\n' "$user_list" |
+              awk -v min_id="$BMC_MIN_USER_ID" '
+                NR > 1 {
+                  id = $1
+                  if ((id + 0) < (min_id + 0)) {
+                    next
+                  }
+                  if ($2 == "true" || $2 == "false" || $2 == "") {
+                    print id
+                    exit
+                  }
+                }
+              '
+          )"
+        fi
+
+        if [ -z "$user_id" ]; then
+          echo "No empty IPMI user slot is available for $BMC_DESIRED_USER" >&2
+          exit 2
+        fi
+
+        if [ "$user_id" != "" ] && desired_ipmitool chassis status >/dev/null 2>&1; then
+          echo "IPMI user $BMC_DESIRED_USER already authenticates with the desired password"
+          exit 0
+        fi
+
+        if [ "$user_exists" -eq 0 ]; then
+          bmc_ipmitool user set name "$user_id" "$BMC_DESIRED_USER"
+        fi
+        bmc_ipmitool channel setaccess "$BMC_CHANNEL" "$user_id" callin=on ipmi=on link=on privilege=4
+        bmc_ipmitool user priv "$user_id" 4 "$BMC_CHANNEL"
+        bmc_ipmitool user enable "$user_id"
+        bmc_ipmitool user set password "$user_id" "$BMC_DESIRED_PASSWORD"
+        echo "IPMI user $BMC_DESIRED_USER was created or updated"
+      args:
+        executable: /bin/bash
+      environment:
+        BMC_HOST: "{{ _bmc_ipmi_host }}"
+        BMC_USERNAME: "{{ bmc_username }}"
+        BMC_PASSWORD: "{{ bmc_password }}"
+        BMC_IPMI_INTERFACE: "{{ bmc_ipmi_interface | default('lanplus') }}"
+        BMC_CHANNEL: "{{ bmc_ipmi_channel | default(1) | string }}"
+        BMC_MIN_USER_ID: "{{ bmc_ipmi_min_user_id | default(2) | string }}"
+        BMC_DESIRED_USER: "{{ item }}"
+        BMC_DESIRED_PASSWORD: "{{ _bmc_desired_user.password }}"
+      vars:
+        _bmc_desired_user: >-
+          {{
+            (
+              _bmc_admin_users
+              | selectattr('name', 'equalto', item)
+              | list
+              | first
+            ) | default({}, true)
+          }}
+      loop: "{{ _bmc_admin_users | map(attribute='name') | list }}"
+      loop_control:
+        label: "{{ item }}"
+      register: _bmc_ipmi_user_updates
+      delegate_to: localhost
+      changed_when: false
+      when:
+        - _bmc_user_provider == 'ipmi'
+        - _bmc_admin_users | length > 0
+
+    - name: Confirm IPMI BMC admin desired passwords work
+      ansible.builtin.shell: |
+        IPMI_PASSWORD="$BMC_DESIRED_PASSWORD" ipmitool -I "$BMC_IPMI_INTERFACE" -H "$BMC_HOST" -U "$BMC_DESIRED_USER" -E chassis status
+      args:
+        executable: /bin/bash
+      environment:
+        BMC_HOST: "{{ _bmc_ipmi_host }}"
+        BMC_IPMI_INTERFACE: "{{ bmc_ipmi_interface | default('lanplus') }}"
+        BMC_DESIRED_USER: "{{ item }}"
+        BMC_DESIRED_PASSWORD: "{{ _bmc_desired_user.password }}"
+      vars:
+        _bmc_desired_user: >-
+          {{
+            (
+              _bmc_admin_users
+              | selectattr('name', 'equalto', item)
+              | list
+              | first
+            ) | default({}, true)
+          }}
+      loop: "{{ _bmc_admin_users | map(attribute='name') | list }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+      delegate_to: localhost
+      when:
+        - _bmc_user_provider == 'ipmi'
+        - _bmc_admin_users | length > 0
+
+    - name: Read BMC users
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/settings/users"
+        method: GET
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        return_content: true
+        status_code: 200
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      register: _bmc_users
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+
+    - name: Show sanitized BMC user slots
+      ansible.builtin.debug:
+        msg:
+          id: "{{ item.id | default('') }}"
+          userid: "{{ item.userid | default('') }}"
+          channel: "{{ item.channel | default('') }}"
+          name: "{{ item.name | default('') }}"
+          access: "{{ item.access | default('') }}"
+          privilege: "{{ item.privilege | default('') }}"
+          accessByChannel: "{{ item.accessByChannel | default('') }}"
+          privilegeByChannel: "{{ item.privilegeByChannel | default('') }}"
+      loop: "{{ _bmc_users.json | default([]) }}"
+      loop_control:
+        label: "{{ item.id | default('?') }} {{ item.name | default('<empty>') }}"
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+        - bmc_debug_users | default(false) | bool
+
+    - name: Collect BMC channels
+      ansible.builtin.set_fact:
+        _bmc_channels: >-
+          {{
+            _bmc_users.json | default([])
+            | map(attribute='channel')
+            | unique
+            | sort
+            | list
+          }}
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+
+    - name: Check BMC admin user desired passwords
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/session"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "{{ item.name }}"
+          password: "{{ item.password }}"
+        return_content: true
+        status_code:
+          - 200
+          - 401
+          - 403
+          - 500
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: _bmc_admin_login_checks
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+
+    - name: Log out BMC admin password check sessions
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/session"
+        method: DELETE
+        headers:
+          Cookie: "{{ item.cookies_string }}"
+          X-CSRFTOKEN: "{{ item.json.CSRFToken }}"
+        status_code:
+          - 200
+          - 204
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      loop: "{{ _bmc_admin_login_checks.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.name | default('unknown') }}"
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_login_checks is defined
+        - item.json.ok | default(1) | int == 0
+        - item.cookies_string is defined
+        - item.json.CSRFToken is defined
+
+    - name: Ensure BMC admin users exist with desired passwords
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/settings/users/{{ _bmc_target_user.id }}"
+        method: PUT
+        body_format: json
+        body: "{{ _bmc_target_user | combine(_bmc_desired_user, recursive=True) }}"
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        status_code:
+          - 200
+          - 201
+          - 204
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      vars:
+        _bmc_existing_user: >-
+          {{
+            (
+              _bmc_users.json | default([])
+              | selectattr('name', 'equalto', item.name)
+              | list
+              | first
+            ) | default({}, true)
+          }}
+        _bmc_empty_user: >-
+          {{
+            (
+              _bmc_users.json | default([])
+              | selectattr('name', 'equalto', '')
+              | list
+              | first
+            )
+            | default(
+                (
+                  _bmc_users.json | default([])
+                  | selectattr('access', 'equalto', '-1')
+                  | list
+                  | first
+                ),
+                true
+              )
+            | default(
+                (
+                  _bmc_users.json | default([])
+                  | selectattr('access', 'equalto', -1)
+                  | list
+                  | first
+                ),
+                true
+              )
+            | default({}, true)
+          }}
+        _bmc_target_user: "{{ _bmc_existing_user if (_bmc_existing_user.id is defined) else _bmc_empty_user }}"
+        _bmc_login_check: >-
+          {{
+            (
+              _bmc_admin_login_checks.results | default([])
+              | selectattr('item.name', 'equalto', item.name)
+              | list
+              | first
+            ) | default({}, true)
+          }}
+        _bmc_password_matches: "{{ _bmc_login_check.json.ok | default(1) | int == 0 }}"
+        _bmc_desired_email: "{{ item.bmc_email_id | default(item.email_id | default(item.email | default(''))) }}"
+        _bmc_existing_email: "{{ _bmc_existing_user.email_id | default(_bmc_existing_user.email | default('')) }}"
+        _bmc_email_matches: "{{ (_bmc_desired_email | length == 0) or (_bmc_existing_email == _bmc_desired_email) }}"
+        _bmc_target_channels: >-
+          {{
+            (
+              _bmc_users.json | default([])
+              | selectattr('userid', 'defined')
+              | selectattr('userid', 'equalto', _bmc_target_user.userid | default('__missing__'))
+              | map(attribute='channel')
+              | list
+            )
+            | default([_bmc_target_user.channel | default(1)], true)
+          }}
+        _bmc_channel_values: "{{ _bmc_target_channels | length | int }}"
+        _bmc_desired_user:
+          name: "{{ item.name }}"
+          UserOperation: "{{ 1 if (_bmc_existing_user.id is defined) else 0 }}"
+          password: "{{ item.password }}"
+          confirm_password: "{{ item.password }}"
+          password_size: "{{ 'bytes_16' if (item.password | length <= 16) else 'bytes_20' }}"
+          accessByChannel: "({{ (['1'] * (_bmc_channel_values | int)) | join(',') }})"
+          privilege: administrator
+          privilegeByChannel: "({{ (['administrator'] * (_bmc_channel_values | int)) | join(',') }})"
+          snmp_access: "{{ item.bmc_snmp_access | default('read_only') }}"
+          snmp_authentication_protocol: "{{ item.bmc_snmp_authentication_protocol | default('sha') }}"
+          snmp_privacy_protocol: "{{ item.bmc_snmp_privacy_protocol | default('aes') }}"
+          email_id: "{{ _bmc_desired_email }}"
+          email_format: "{{ item.bmc_email_format | default('ami_format') }}"
+          ssh_key: "{{ _bmc_existing_user.ssh_key | default('') }}"
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: _bmc_user_updates
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+        - _bmc_target_user.id is defined
+        - _bmc_existing_user.id is not defined or not (_bmc_password_matches | bool) or not (_bmc_email_matches | bool)
+
+    - name: Require an available BMC user slot
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              _bmc_users.json | default([])
+              | selectattr('name', 'equalto', item.name)
+              | list
+              | length
+            ) > 0
+            or
+            (
+              _bmc_users.json | default([])
+              | selectattr('name', 'equalto', '')
+              | list
+              | length
+            ) > 0
+            or
+            (
+              _bmc_users.json | default([])
+              | selectattr('access', 'equalto', '-1')
+              | list
+              | length
+            ) > 0
+            or
+            (
+              _bmc_users.json | default([])
+              | selectattr('access', 'equalto', -1)
+              | list
+              | length
+            ) > 0
+        fail_msg: "No existing or empty BMC user slot is available for {{ item.name }}."
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+
+    - name: Verify BMC admin users exist
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/settings/users"
+        method: GET
+        headers:
+          Cookie: "{{ _bmc_login.cookies_string }}"
+          X-CSRFTOKEN: "{{ _bmc_login.json.CSRFToken }}"
+        return_content: true
+        status_code: 200
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      register: _bmc_users_after_update
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+
+    - name: Confirm BMC admin users are administrator accounts
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              _bmc_users_after_update.json | default([])
+              | selectattr('name', 'equalto', item.name)
+              | selectattr('privilege', 'equalto', 'administrator')
+              | list
+              | length
+            ) > 0
+        fail_msg: "BMC admin user {{ item.name }} was not found as an administrator account."
+        success_msg: "BMC admin user {{ item.name }} is present with administrator privilege."
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+
+    - name: Confirm BMC admin desired passwords work
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/session"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "{{ item.name }}"
+          password: "{{ item.password }}"
+        return_content: true
+        status_code: 200
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: _bmc_admin_final_login_checks
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_users | length > 0
+
+    - name: Log out final BMC admin password check sessions
+      ansible.builtin.uri:
+        url: "{{ _bmc_base_url }}/api/session"
+        method: DELETE
+        headers:
+          Cookie: "{{ item.cookies_string }}"
+          X-CSRFTOKEN: "{{ item.json.CSRFToken }}"
+        status_code:
+          - 200
+          - 204
+        validate_certs: "{{ bmc_validate_certs | default(false) }}"
+        timeout: "{{ bmc_api_timeout | default(30) }}"
+      loop: "{{ _bmc_admin_final_login_checks.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.name | default('unknown') }}"
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'web_api'
+        - _bmc_admin_final_login_checks is defined
+        - item.json.ok | default(1) | int == 0
+        - item.cookies_string is defined
+        - item.json.CSRFToken is defined
 
     - name: Import quiet fan profile
       ansible.builtin.uri:
@@ -85,6 +645,7 @@
       register: _bmc_import_profile
       delegate_to: localhost
       no_log: true
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Read BMC fan profile collection
       ansible.builtin.uri:
@@ -100,6 +661,7 @@
       register: _bmc_fan_profile_collection
       delegate_to: localhost
       no_log: true
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Confirm quiet fan profile exists
       ansible.builtin.assert:
@@ -109,6 +671,7 @@
           Fan profile import returned success, but profile
           {{ bmc_fan_profile_name | default(_bmc_default_fan_profile_name) }}
           was not found in the BMC profile collection.
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Activate quiet fan profile
       ansible.builtin.uri:
@@ -129,6 +692,7 @@
       register: _bmc_activate_profile
       delegate_to: localhost
       no_log: true
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Read active fan profile mode
       ansible.builtin.uri:
@@ -147,6 +711,7 @@
       retries: "{{ bmc_mode_verify_retries | default(10) }}"
       delay: "{{ bmc_mode_verify_delay | default(2) }}"
       no_log: true
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Confirm quiet fan profile is active
       ansible.builtin.assert:
@@ -157,6 +722,7 @@
           {{ _bmc_fan_profile_mode.json.strMode | default('unknown') }}
           instead of {{ bmc_fan_profile_name | default(_bmc_default_fan_profile_name) }}.
         success_msg: "BMC fan profile '{{ bmc_fan_profile_name | default(_bmc_default_fan_profile_name) }}' is active on {{ inventory_hostname }}."
+      when: bmc_manage_fan_profile | default(false) | bool
 
     - name: Log out of BMC web API
       ansible.builtin.uri:
@@ -174,3 +740,4 @@
       changed_when: false
       delegate_to: localhost
       no_log: true
+      when: _bmc_requires_web_api | bool

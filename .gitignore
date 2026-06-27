@@ -1,6 +1,7 @@
 # Local homelab values — IPs, MACs, BMC credentials, host-specific overrides
 local.mk
 infrastructure/ansible/inventory/hosts.local.yaml
+infrastructure/ansible/vars/bmc-users.local.yaml
 infrastructure/ansible/vars/homelab.local.yaml
 infrastructure/ansible/vars/proxmox-users.local.yaml
 infrastructure/ironic/nodes/proxmox-nodes.yaml

@@ -146,11 +146,3 @@ echo "==> Running Proxmox baseline on ${ANSIBLE_HOST}"
         -e ansible_host="${ANSIBLE_HOST}" \
         -e ansible_user=root
 )
-
-echo "==> Running BMC baseline for ${NODE}"
-(
-    cd "${ANSIBLE_DIR}"
-    ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
-        ansible-playbook "${ANSIBLE_INVENTORY[@]}" "playbooks/bmc-baseline.yaml" \
-        --limit "${NODE}"
-)

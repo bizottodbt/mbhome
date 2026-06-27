@@ -13,13 +13,47 @@ all:
         openstack:
           ansible_host: 192.0.2.10
 
+    bmc_controllers:
+      vars:
+        bmc_validate_certs: false
+      children:
+        bmc_mj11:
+          vars:
+            bmc_username: admin
+            bmc_password: CHANGE_ME_MJ11
+            bmc_profile: gigabyte_mj11_ec1
+            bmc_manage_fan_profile: true
+            bmc_user_provider: web_api
+          hosts:
+            mbhome-proxmox-01-bmc:
+              bmc_address: https://192.0.2.20
+              bmc_managed_host: mbhome-proxmox-01
+            mbhome-proxmox-02-bmc:
+              bmc_address: https://192.0.2.21
+              bmc_managed_host: mbhome-proxmox-02
+            mbhome-proxmox-03-bmc:
+              bmc_address: https://192.0.2.22
+              bmc_managed_host: mbhome-proxmox-03
+
+        bmc_asrock_d1541d4u_2t8r:
+          vars:
+            bmc_username: admin
+            bmc_password: CHANGE_ME_ASROCK
+            bmc_profile: asrock_d1541d4u_2t8r
+            bmc_manage_fan_profile: false
+            bmc_user_provider: ipmi
+            bmc_ipmi_interface: lanplus
+            bmc_ipmi_channel: 1
+            bmc_ipmi_min_user_id: 2
+          hosts:
+            mbhome-nas-01-bmc:
+              bmc_address: https://192.0.2.49
+              bmc_managed_host: mbhome-nas-01
+
     proxmox_nodes:
       vars:
         proxmox_dns_servers:
           - 192.0.2.1
-        bmc_username: admin
-        bmc_password: CHANGE_ME
-        bmc_validate_certs: false
         proxmox_10gbe_mtu: 1500
         proxmox_nfs_server: 192.0.2.48
         proxmox_nfs_mounts:
@@ -38,7 +72,7 @@ all:
       hosts:
         mbhome-proxmox-01:
           ansible_host: 192.0.2.51
-          bmc_address: https://192.0.2.20
+          bmc_inventory_host: mbhome-proxmox-01-bmc
           proxmox_10gbe_links:
             - interface: enp5s0f0
               address: 198.51.100.11
@@ -47,7 +81,7 @@ all:
 
         mbhome-proxmox-02:
           ansible_host: 192.0.2.52
-          bmc_address: https://192.0.2.21
+          bmc_inventory_host: mbhome-proxmox-02-bmc
           proxmox_10gbe_links:
             - interface: enp5s0f0
               address: 198.51.100.12
@@ -56,5 +90,5 @@ all:
 
         mbhome-proxmox-03:
           ansible_host: 192.0.2.53
-          bmc_address: https://192.0.2.22
+          bmc_inventory_host: mbhome-proxmox-03-bmc
           proxmox_10gbe_links: []

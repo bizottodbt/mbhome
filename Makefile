@@ -99,7 +99,7 @@ PROXMOX_DNS ?= $(PROXMOX_GATEWAY)
 PROXMOX_MAC ?=
 ANSIBLE_HOST ?= $(or $(PROXMOX_IP),$(NODE))
 
-ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run Proxmox + BMC baselines (usage: make ironic-deploy-proxmox NODE=mbhome-proxmox-01 PROXMOX_IP=192.0.2.51)
+ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run the Proxmox baseline (usage: make ironic-deploy-proxmox NODE=mbhome-proxmox-01 PROXMOX_IP=192.0.2.51)
 	@test -n "$(NODE)" || (echo "Usage: make ironic-deploy-proxmox NODE=<node-name> [PROXMOX_IP=<static-ip>] [ANSIBLE_HOST=<ip-or-dns>]"; exit 1)
 	@test -n "$(ANSIBLE_HOST)" || (echo "Usage: make ironic-deploy-proxmox NODE=<node-name> [PROXMOX_IP=<static-ip>] [ANSIBLE_HOST=<ip-or-dns>]"; exit 1)
 	NODE="$(NODE)" \
@@ -117,7 +117,7 @@ ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run Proxmox + BMC b
 proxmox-baseline: ## Configure deployed Proxmox nodes (usage: make proxmox-baseline LIMIT=mbhome-proxmox-01)
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/proxmox-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)
 
-bmc-baseline: ## Configure node BMCs, including the quiet MJ11 fan profile (usage: make bmc-baseline LIMIT=mbhome-proxmox-01)
+bmc-baseline: ## Configure BMC users and board-specific settings (usage: make bmc-baseline LIMIT=mbhome-proxmox-01-bmc)
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/bmc-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)
 
 # Internal: create/update the venv (not listed in help)
