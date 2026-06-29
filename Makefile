@@ -56,7 +56,7 @@ openstack-stack-status: ## Show OpenStack VM mounts and Kolla container health
 		systemctl list-units "kolla-*-container.service" --no-legend --plain | awk "{print \$$1, \$$3, \$$4}" | sort; \
 		echo ""; \
 		echo "==> Mounts"; \
-		sudo findmnt /var/lib/openstack-data /var/lib/docker/volumes /var/lib/glance/images || true; \
+		for target in /var/lib/openstack-data /var/lib/docker/volumes /var/lib/glance/images; do sudo findmnt -T "$$target" || true; done; \
 		echo ""; \
 		echo "==> Disk usage"; \
 		sudo df -h / /var/lib/openstack-data /var/lib/docker/volumes /var/lib/glance/images; \

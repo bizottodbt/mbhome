@@ -129,8 +129,11 @@
           {{
             [
               'dnsutils',
+              'fio',
+              'iperf3',
               'ipmitool',
               'netcat-openbsd',
+              'nfs-common',
               'tcptraceroute',
               'traceroute'
             ]
@@ -186,22 +189,19 @@
         shell: "{{ item.shell | default('/bin/bash') }}"
         groups: "{{ item.groups | default(['sudo']) }}"
         append: true
-        password: >-
-          {{
-            item.password_hash
-            | default(
-                (
-                  item.password
-                  | password_hash(
-                      'sha512',
-                      ((inventory_hostname ~ '-' ~ item.name) | hash('sha256'))[:16]
-                    )
-                ) if item.password is defined else omit
-              )
-          }}
-        update_password: "{{ 'always' if (item.password_hash is defined or item.password is defined) else omit }}"
+        password: "{{ item.password_hash | default(omit) }}"
+        update_password: "{{ 'always' if item.password_hash is defined else omit }}"
         state: present
       loop: "{{ proxmox_admin_users | default([]) }}"
+      no_log: true
+
+    - name: Set plaintext passwords for Proxmox admin users
+      ansible.builtin.command:
+        argv:
+          - chpasswd
+        stdin: "{{ item.name }}:{{ item.password }}"
+      loop: "{{ proxmox_admin_users | default([]) | selectattr('password', 'defined') | list }}"
+      changed_when: true
       no_log: true
 
     - name: Install SSH authorized keys for Proxmox admin users

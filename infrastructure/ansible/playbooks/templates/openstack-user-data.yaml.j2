@@ -5,7 +5,7 @@
 
 hostname: {{ vm_hostname }}
 fqdn: {{ vm_hostname }}.local
-manage_etc_hosts: true
+manage_etc_hosts: false
 
 # ── User account ─────────────────────────────────────────────────────────────
 users:
@@ -34,10 +34,30 @@ packages:
   - lvm2            # required by Ironic agent for cleaning
   - e2fsprogs       # formats the persistent OpenStack data disk
 
+write_files:
+  - path: /etc/hosts
+    permissions: "0644"
+    content: |
+      127.0.0.1 localhost
+      {{ vm_ip }} {{ vm_hostname }}.local {{ vm_hostname }}
+
+      # The following lines are desirable for IPv6 capable hosts
+      ::1 localhost ip6-localhost ip6-loopback
+      ff02::1 ip6-allnodes
+      ff02::2 ip6-allrouters
+  - path: /etc/sysctl.d/99-mbhome-disable-ipv6.conf
+    permissions: "0644"
+    content: |
+      net.ipv6.conf.all.disable_ipv6 = 1
+      net.ipv6.conf.default.disable_ipv6 = 1
+
 # ── Services ─────────────────────────────────────────────────────────────────
 bootcmd:
   - |
     set -eux
+    sysctl -w net.ipv6.conf.all.disable_ipv6=1
+    sysctl -w net.ipv6.conf.default.disable_ipv6=1
+    sysctl --system || true
     if [ -f /etc/ssh/sshd_config ]; then
       sed -i 's/^[[:space:]]*AcceptEnv[[:space:]].*/# disabled by mbhome: &/' /etc/ssh/sshd_config
     fi

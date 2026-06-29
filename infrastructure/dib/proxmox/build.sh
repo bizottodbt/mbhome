@@ -13,7 +13,7 @@ VENV=/tmp/dib-venv-proxmox
 OUTPUT=/tmp/proxmox
 
 echo "==> Installing diskimage-builder..."
-sudo apt-get install -y -q python3-venv python3-pip debootstrap qemu-utils kpartx
+sudo apt-get install -y -q python3-venv python3-pip debootstrap qemu-utils kpartx parted
 python3 -m venv "$VENV"
 "$VENV"/bin/pip install -q 'diskimage-builder>=3.28'
 
