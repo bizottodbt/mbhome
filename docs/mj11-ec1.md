@@ -32,37 +32,43 @@ It is recommended to clear CMOS before starting:
 
 ## BIOS Settings
 
-The board was kept in its original BIOS F09, many users cross-flash F02 BIOS from its "sister's" board [MJ11-EC0](https://www.gigabyte.com/Enterprise/Server-Motherboard/MJ11-EC0-rev-12) seeking Bifurcation in the SlimSAS 8i connector (see the blog link above). To enable in a stable way for the board to boot with 4 dual rank RDIMMS, the clock speed has to be adjusted and limited to 1067 MHz.
+The board was kept in its original BIOS F09, many users cross-flash F02 BIOS from its "sister's" board [MJ11-EC0](https://www.gigabyte.com/Enterprise/Server-Motherboard/MJ11-EC0-rev-12) seeking Bifurcation in the SlimSAS 8i connector (see the blog link above). To enable in a stable way for the board to boot with 4 dual rank RDIMMS, the clock speed has to be adjusted and limited to 1067 MHz, the UMC Common Options settings below are to enable stability with 4 dual rank RDIMMS.
 
-### Downclock Memory: 1067 MHz
-Advanced > AMD CBS > UMC Common Options > DDR4 Common Options > DRAM Timing Configuration > I Accept >
-- Overclock: Enabled
-- Memory Clock Speed: 1067 MHz
-Some other users also changed some extra values [here](https://forums.servethehome.com/index.php?threads/gigabyte-mj11-ec1-epyc-3151-mystery.41395/post-504951)
-
-### Hyperthreading: Enabled
-Advanced > AMD CBS > Zen Common Options > Core/Thread Enablement > Agree > SMTEN: Auto
-
-### Global C-state Control: Enabled
-Advanced > AMD CBS > Zen Common Options > Global C-state Control: Enabled
-
-### Core Performance Boost: Disabled
-Advanced > AMD CBS > Zen Common Options > Core Performance Boost: Disabled
-
-### IOMMU: Enabled
-Advanced > AMD CBS > NBIO Common Options > NB Configuration > IOMMU > Enabled
-
-### Determinism Slider: Power
-Advanced > AMD CBS > NBIO Common Options > NB Configuration > Determinism Slider > Power
-
-### SVM: Enabled
-Advanced > CPU Configuration > SVM Mode > Enabled (Or via BMC)
-
-### SR-IOV SUpport: Enabled
-Advanced > PCI Subsystem Settings > SR-IOV Support > Enabled (Or via BMC)
-
-### Quiet Boot: Disabled
-Boot > Quiet Boot > Disabled (Or via BMC)
+```yaml
+Advanced:
+  CPU Configuration:
+    SVM Mode: Enabled # Can be done via BMC
+  PCI Subsystem Settings:
+    SR-IOV Support: Enabled # Can be done via BMC
+  AMD CBS:
+    Zen Common Options:
+      Core Performance Boost: Disabled
+      Global C-state Control: Enabled
+      Core/Thread Enablement: # Hyperthreading: Enabled
+        Agree:
+          SMTEN: Auto
+    UMC Common Options:
+      DDR4 Common Options:
+        DRAM Timing Configuration: # Downclock Memory: 1067 MHz
+          I Accept:
+            Overclock: Enabled
+            Memory Clock Speed: 1067 MHz
+            Trcdrd: 10h Clk
+            Trcdwr: 10h Clk
+            Trp: 10h Clk
+            ProcODT: 48 ohm #CPU-side memory bus termination
+        Data Bus Configuration:
+          Data Bus Configuration User Controls: Manual #on-die termination behavior
+          RttNom: RZQ/7
+          RttWr: Dynamic ODT Off
+          RttPark: RZQ/2
+    NBIO Common Options:
+      NB Configuration:
+        IOMMU: Enabled
+      Determinism Slider: Power
+Boot:
+  Quiet Boot: Disabled # can be done via BMC
+```
 
 ## Kernel parameters
 
