@@ -13,6 +13,7 @@ set -euo pipefail
 ELEMENTS_PATH_DIR=/tmp/dib-elements-debian
 VENV=/tmp/dib-venv-debian
 OUTPUT=/tmp/debian
+IMAGE_INFO=/tmp/debian.image-info
 
 echo "==> Installing diskimage-builder..."
 sudo apt-get install -y -q python3-venv python3-pip debootstrap qemu-utils kpartx parted
@@ -42,3 +43,14 @@ sudo parted "${OUTPUT}.raw" unit MiB print
 echo ""
 echo "==> Image built successfully: ${OUTPUT}.raw"
 echo "    Size: $(du -sh "${OUTPUT}.raw" | cut -f1)"
+
+cat > "$IMAGE_INFO" <<EOF
+IMAGE_NAME=debian
+IMAGE_OS=debian
+IMAGE_OS_VERSION=debian-13-trixie
+IMAGE_DISTRO=debian
+IMAGE_DISTRO_VERSION=13-trixie
+IMAGE_BUILD_DATE=$(date -u +%Y%m%dT%H%M%SZ)
+EOF
+
+echo "==> Image metadata written to ${IMAGE_INFO}"

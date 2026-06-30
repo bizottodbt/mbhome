@@ -189,7 +189,15 @@ ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage:
 	ssh openstack 'test -x /tmp/glance-upload-venv/bin/openstack || (python3 -m venv /tmp/glance-upload-venv && /tmp/glance-upload-venv/bin/pip install -q python-openstackclient)'
 	@set -e; \
 	source $(KOLLA_DIR)/admin-openrc.sh; \
-	UPLOAD_CMD="OS_AUTH_URL=$$OS_AUTH_URL \
+	UPLOAD_CMD="set -e; \
+		IMAGE_NAME=$(OS); \
+		IMAGE_OS=$(OS); \
+		IMAGE_OS_VERSION=unknown; \
+		IMAGE_DISTRO=unknown; \
+		IMAGE_DISTRO_VERSION=unknown; \
+		IMAGE_BUILD_DATE=unknown; \
+		if [ -f /tmp/$(OS).image-info ]; then . /tmp/$(OS).image-info; fi; \
+		OS_AUTH_URL=$$OS_AUTH_URL \
 		OS_PROJECT_NAME=$$OS_PROJECT_NAME \
 		OS_USERNAME=$$OS_USERNAME \
 		OS_PASSWORD=$$OS_PASSWORD \
@@ -200,7 +208,14 @@ ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage:
 			--disk-format raw \
 			--container-format bare \
 			--file /tmp/$(OS).raw \
-			$(OS)"; \
+			--property os_distro=\"\$$IMAGE_DISTRO\" \
+			--property os_version=\"\$$IMAGE_OS_VERSION\" \
+			--property mbhome_os=\"\$$IMAGE_OS\" \
+			--property mbhome_os_version=\"\$$IMAGE_OS_VERSION\" \
+			--property mbhome_distro=\"\$$IMAGE_DISTRO\" \
+			--property mbhome_distro_version=\"\$$IMAGE_DISTRO_VERSION\" \
+			--property mbhome_build_date=\"\$$IMAGE_BUILD_DATE\" \
+			\"\$$IMAGE_NAME\""; \
 	if ! ssh openstack "$$UPLOAD_CMD"; then \
 		echo ""; \
 		echo "ERROR: Glance upload failed, but the image should still be on the OpenStack VM at /tmp/$(OS).raw"; \
@@ -210,4 +225,4 @@ ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage:
 		echo "  ssh openstack \"$$UPLOAD_CMD\""; \
 		exit 1; \
 	fi
-	@echo "==> Done. Image '$(OS)' is now in Glance."
+	@echo "==> Done. Image '$(OS)' is now in Glance with OS version metadata."
