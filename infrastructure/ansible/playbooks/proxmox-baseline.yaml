@@ -128,14 +128,21 @@
         _proxmox_baseline_packages: >-
           {{
             [
+              'curl',
               'dnsutils',
               'fio',
+              'htop',
+              'ifupdown2',
+              'iotop',
               'iperf3',
               'ipmitool',
+              'nano',
               'netcat-openbsd',
               'nfs-common',
+              'screen',
               'tcptraceroute',
-              'traceroute'
+              'traceroute',
+              'wget'
             ]
             + (['sudo'] if (proxmox_admin_users | default([]) | length > 0) else [])
           }}
@@ -185,6 +192,7 @@
     - name: Ensure Proxmox admin users exist
       ansible.builtin.user:
         name: "{{ item.name }}"
+        uid: "{{ item.uid | default(omit) }}"
         comment: "{{ item.comment | default(omit) }}"
         shell: "{{ item.shell | default('/bin/bash') }}"
         groups: "{{ item.groups | default(['sudo']) }}"
@@ -202,6 +210,28 @@
         stdin: "{{ item.name }}:{{ item.password }}"
       loop: "{{ proxmox_admin_users | default([]) | selectattr('password', 'defined') | list }}"
       changed_when: true
+      no_log: true
+
+    - name: Ensure Proxmox admin user bash aliases are present
+      ansible.builtin.blockinfile:
+        path: "{{ item.home | default('/home/' ~ item.name) }}/.bashrc"
+        create: true
+        owner: "{{ item.name }}"
+        group: "{{ item.primary_group | default(omit) }}"
+        mode: "0644"
+        marker: "# {mark} ANSIBLE MANAGED PROXMOX ALIASES"
+        block: |
+          {% for user_alias in item.aliases | default([]) %}
+          {% if user_alias is mapping %}
+          alias {{ user_alias.name }}={{ user_alias.command | quote }}
+          {% elif user_alias is string and user_alias is match('^alias\\s+') %}
+          {{ user_alias }}
+          {% elif user_alias is string and '=' in user_alias %}
+          alias {{ user_alias | regex_replace('\\s*=\\s*', '=', 1) }}
+          {% endif %}
+          {% endfor %}
+      loop: "{{ proxmox_admin_users | default([]) | selectattr('aliases', 'defined') | list }}"
+      when: item.aliases | default([]) | length > 0
       no_log: true
 
     - name: Install SSH authorized keys for Proxmox admin users

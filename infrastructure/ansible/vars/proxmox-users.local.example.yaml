@@ -3,12 +3,13 @@
 # operational details.
 #
 # Set password to let Ansible manage password-based PAM login for sudo and the
-# Proxmox Web UI. The playbook hashes it at runtime before applying it.
+# Proxmox Web UI. This local file is git-ignored because it contains secrets.
 #
 # The public key is not secret, but keeping the full user definition in one
 # ignored local file keeps operational details out of normal inventory.
 proxmox_admin_users:
   - name: bizotto
+    uid: 1000
     comment: "Proxmox administrator"
     shell: /bin/bash
     groups:
@@ -20,3 +21,7 @@ proxmox_admin_users:
     password: "CHANGE_ME"
     ssh_public_keys:
       - "ssh-ed25519 replace-with-real-public-key bizotto"
+    aliases:
+      - "ll = 'ls -alF'"
+      - name: k
+        command: kubectl

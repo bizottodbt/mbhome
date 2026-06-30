@@ -173,6 +173,7 @@ kolla-ipa-images: ## Build IPA kernel + initramfs on the OpenStack VM, pinned to
 
 SSH_KEY_FILE ?= ~/.ssh/id_ed25519.pub
 DIB_ROOT_PASSWORD ?= ironic
+DIB_IMAGE_DIR ?= /var/lib/openstack-data/dib
 
 ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage: make ironic-build-image OS=proxmox [SSH_KEY_FILE=~/.ssh/other.pub])
 	@test -n "$(OS)" || (echo "Usage: make ironic-build-image OS=<os>  (e.g. OS=proxmox)"; exit 1)
@@ -183,7 +184,7 @@ ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage:
 	scp -r $(DIB_BASE)/$(OS)/elements/. openstack:/tmp/dib-elements-$(OS)/
 	scp $(DIB_BASE)/$(OS)/build.sh openstack:/tmp/dib-build-$(OS).sh
 	@echo "==> Building image on OpenStack VM (this takes ~15-30 min)..."
-	ssh openstack "sudo DIB_ROOT_SSH_KEY='$(shell cat $(SSH_KEY_FILE))' DIB_ROOT_PASSWORD='$(DIB_ROOT_PASSWORD)' bash /tmp/dib-build-$(OS).sh"
+	ssh openstack "sudo DIB_ROOT_SSH_KEY='$(shell cat $(SSH_KEY_FILE))' DIB_ROOT_PASSWORD='$(DIB_ROOT_PASSWORD)' DIB_IMAGE_DIR='$(DIB_IMAGE_DIR)' bash /tmp/dib-build-$(OS).sh"
 	@echo "==> Uploading image to Glance from the VM (avoids local download)..."
 	@# Ensure the openstack CLI is available on the VM (installed in a venv to avoid system conflicts).
 	ssh openstack 'test -x /tmp/glance-upload-venv/bin/openstack || (python3 -m venv /tmp/glance-upload-venv && /tmp/glance-upload-venv/bin/pip install -q python-openstackclient)'
@@ -196,7 +197,9 @@ ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage:
 		IMAGE_DISTRO=unknown; \
 		IMAGE_DISTRO_VERSION=unknown; \
 		IMAGE_BUILD_DATE=unknown; \
-		if [ -f /tmp/$(OS).image-info ]; then . /tmp/$(OS).image-info; fi; \
+		IMAGE_FILE=$(DIB_IMAGE_DIR)/$(OS).raw; \
+		IMAGE_INFO_FILE=$(DIB_IMAGE_DIR)/$(OS).image-info; \
+		if [ -f \"\$$IMAGE_INFO_FILE\" ]; then . \"\$$IMAGE_INFO_FILE\"; fi; \
 		OS_AUTH_URL=$$OS_AUTH_URL \
 		OS_PROJECT_NAME=$$OS_PROJECT_NAME \
 		OS_USERNAME=$$OS_USERNAME \
@@ -207,7 +210,7 @@ ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage:
 		/tmp/glance-upload-venv/bin/openstack image create \
 			--disk-format raw \
 			--container-format bare \
-			--file /tmp/$(OS).raw \
+			--file \"\$$IMAGE_FILE\" \
 			--property os_distro=\"\$$IMAGE_DISTRO\" \
 			--property os_version=\"\$$IMAGE_OS_VERSION\" \
 			--property mbhome_os=\"\$$IMAGE_OS\" \
@@ -218,7 +221,7 @@ ironic-build-image: ## Build a raw OS image via DIB and upload to Glance (usage:
 			\"\$$IMAGE_NAME\""; \
 	if ! ssh openstack "$$UPLOAD_CMD"; then \
 		echo ""; \
-		echo "ERROR: Glance upload failed, but the image should still be on the OpenStack VM at /tmp/$(OS).raw"; \
+		echo "ERROR: Glance upload failed, but the image should still be on the OpenStack VM at $(DIB_IMAGE_DIR)/$(OS).raw"; \
 		echo ""; \
 		echo "Retry manually with:"; \
 		echo "  source $(KOLLA_DIR)/admin-openrc.sh"; \

@@ -5,18 +5,22 @@
 # Required environment variables:
 #   DIB_ROOT_SSH_KEY  — SSH public key to inject into root (passed by Makefile)
 #
-# Output: /tmp/proxmox.raw
+# Output: ${DIB_IMAGE_DIR:-/var/lib/openstack-data/dib}/proxmox.raw
 set -euo pipefail
 
 ELEMENTS_PATH_DIR=/tmp/dib-elements-proxmox
 VENV=/tmp/dib-venv-proxmox
-OUTPUT=/tmp/proxmox
-IMAGE_INFO=/tmp/proxmox.image-info
+IMAGE_DIR="${DIB_IMAGE_DIR:-/var/lib/openstack-data/dib}"
+OUTPUT="${IMAGE_DIR}/proxmox"
+IMAGE_INFO="${IMAGE_DIR}/proxmox.image-info"
 
 echo "==> Installing diskimage-builder..."
 sudo apt-get install -y -q python3-venv python3-pip debootstrap qemu-utils kpartx parted
 python3 -m venv "$VENV"
 "$VENV"/bin/pip install -q 'diskimage-builder>=3.28'
+
+echo "==> Preparing persistent image output directory: ${IMAGE_DIR}"
+install -d -m 0755 "$IMAGE_DIR"
 
 echo "==> Making element scripts executable..."
 find "$ELEMENTS_PATH_DIR" -type f \( -name "*.d" -prune -o -print \) | xargs -r chmod +x 2>/dev/null || true
@@ -51,5 +55,6 @@ IMAGE_DISTRO=debian
 IMAGE_DISTRO_VERSION=13-trixie
 IMAGE_BUILD_DATE=$(date -u +%Y%m%dT%H%M%SZ)
 EOF
+chmod 0644 "${OUTPUT}.raw" "$IMAGE_INFO"
 
 echo "==> Image metadata written to ${IMAGE_INFO}"

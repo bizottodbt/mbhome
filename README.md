@@ -369,7 +369,13 @@ make ironic-build-image OS=proxmox
 make ironic-build-image OS=proxmox SSH_KEY_FILE=~/.ssh/deploy_key.pub
 ```
 
-This copies `infrastructure/dib/proxmox/` to the OpenStack VM, runs DIB there (native Debian/amd64 — no emulation), writes build metadata to `/tmp/proxmox.image-info`, and uploads `/tmp/proxmox.raw` to Glance as `proxmox`.
+This copies `infrastructure/dib/proxmox/` to the OpenStack VM, runs DIB there (native Debian/amd64 — no emulation), writes the raw image and metadata under `/var/lib/openstack-data/dib/`, and uploads `/var/lib/openstack-data/dib/proxmox.raw` to Glance as `proxmox`.
+
+To use a different remote build directory:
+
+```bash
+make ironic-build-image OS=proxmox DIB_IMAGE_DIR=/path/on/openstack-vm
+```
 
 The Glance image keeps the stable name `proxmox` so the deploy helper can look it up reliably, and stores the OS details as standard `os_*` and repo-specific `mbhome_*` image properties:
 
