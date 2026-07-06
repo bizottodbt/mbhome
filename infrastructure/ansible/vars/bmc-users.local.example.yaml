@@ -6,7 +6,12 @@
 # OpenStack/Ironic deploys an operating system to the node.
 bmc_admin_users:
   - name: bizotto
+    # MJ11/AMI web API passwords should be 6-16 characters. Some BMCs return
+    # HTTP 500 instead of a useful validation error for longer passwords.
     password: "CHANGE_ME"
-    # Optional. Used by BMCs managed through the web API.
     email: "YOUR_EMAIL_HERE"
+    # Optional. Used by web/API managed BMCs; the first key is written to the
+    # BMC ssh_key field.
+    ssh_public_keys:
+      - "ssh-ed25519 replace-with-real-public-key bmc-admin"
     enabled: true

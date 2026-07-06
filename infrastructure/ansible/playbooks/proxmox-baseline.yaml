@@ -192,7 +192,7 @@
     - name: Ensure Proxmox admin users exist
       ansible.builtin.user:
         name: "{{ item.name }}"
-        uid: "{{ item.uid | default(omit) }}"
+        uid: "{{ item.uid | default(item.id | default(omit)) }}"
         comment: "{{ item.comment | default(omit) }}"
         shell: "{{ item.shell | default('/bin/bash') }}"
         groups: "{{ item.groups | default(['sudo']) }}"

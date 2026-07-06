@@ -26,7 +26,7 @@ all:
           hosts:
             mbhome-proxmox-01-bmc: {}
             mbhome-proxmox-02-bmc: {}
-            mbhome-proxmox-03-bmc: {}
+            # mbhome-proxmox-03-bmc: {}
 
         bmc_asrock_d1541d4u_2t8r:
           vars:
@@ -60,8 +60,8 @@ all:
         mbhome-proxmox-02:
           proxmox_10gbe_links: []
 
-        mbhome-proxmox-03:
-          proxmox_10gbe_links: []
+        # mbhome-proxmox-03:
+        #   proxmox_10gbe_links: []
 
     k3s_control_plane:
       hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)

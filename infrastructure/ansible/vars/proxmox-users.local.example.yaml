@@ -9,6 +9,8 @@
 # ignored local file keeps operational details out of normal inventory.
 proxmox_admin_users:
   - name: bizotto
+    # uid is the Linux numeric user ID. The playbook also accepts id as an
+    # alias for uid for local convenience.
     uid: 1000
     comment: "Proxmox administrator"
     shell: /bin/bash

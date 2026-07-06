@@ -280,6 +280,11 @@ It also loads git-ignored
 `infrastructure/ansible/vars/bmc-users.local.yaml`: users in `bmc_admin_users`
 with a plaintext `password` are created or updated as BMC administrators. The
 playbook only changes the BMC users explicitly listed in `bmc_admin_users`.
+For BMCs managed through the web API, each user may also include `email`,
+`ssh_public_key`, `ssh_public_keys`, or `ssh_key`; when a list is provided, the
+first key is written to the BMC `ssh_key` field. Generic IPMI user management
+can set the username, password, enabled state, and privilege, but it cannot
+install SSH authorized keys.
 
 Start the BMC user vars from
 [`infrastructure/ansible/vars/bmc-users.local.example.yaml`](infrastructure/ansible/vars/bmc-users.local.example.yaml)

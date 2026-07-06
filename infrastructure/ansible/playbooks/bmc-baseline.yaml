@@ -123,6 +123,21 @@
         - bmc_admin_users is defined
         - _bmc_admin_users | length == 0
 
+    - name: Validate web API BMC admin user names
+      ansible.builtin.assert:
+        that:
+          - item | length <= 16
+          - item is match('^[A-Za-z0-9_-]+$')
+        fail_msg: >-
+          BMC user name {{ item }} is not safe for the MJ11/AMI web API.
+          Use 16 or fewer characters and only letters, numbers, hyphen, and
+          underscore.
+      loop: "{{ _bmc_admin_users | map(attribute='name') | list }}"
+      loop_control:
+        label: "{{ item }}"
+      when:
+        - _bmc_user_provider == 'web_api'
+
     - name: Validate BMC admin user passwords
       ansible.builtin.assert:
         that:
@@ -135,6 +150,36 @@
       loop: "{{ _bmc_admin_users }}"
       loop_control:
         label: "{{ item.name }}"
+      no_log: true
+
+    - name: Validate web API BMC admin password size
+      ansible.builtin.assert:
+        that:
+          - item.password | length <= 16
+        fail_msg: >-
+          BMC password for {{ item.name }} must be 16 characters or fewer for
+          the MJ11/AMI web API. Longer passwords can make the BMC return HTTP
+          500 during user updates.
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - _bmc_user_provider == 'web_api'
+      no_log: true
+
+    - name: Validate IPMI BMC admin user names
+      ansible.builtin.assert:
+        that:
+          - item.name | length <= 16
+        fail_msg: >-
+          IPMI user name {{ item.name }} is longer than 16 characters, which
+          many BMCs cannot store. Shorten it in bmc-users.local.yaml or set
+          enabled: false for that BMC user.
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - _bmc_user_provider == 'ipmi'
       no_log: true
 
     - name: Check ipmitool for IPMI BMC user management
@@ -288,6 +333,45 @@
         - _bmc_user_provider == 'ipmi'
         - _bmc_admin_users | length > 0
 
+    - name: Read IPMI BMC users after update
+      ansible.builtin.shell: |
+        IPMI_PASSWORD="$BMC_PASSWORD" ipmitool -I "$BMC_IPMI_INTERFACE" -H "$BMC_HOST" -U "$BMC_USERNAME" -E user list "$BMC_CHANNEL"
+      args:
+        executable: /bin/bash
+      environment:
+        BMC_HOST: "{{ _bmc_ipmi_host }}"
+        BMC_USERNAME: "{{ bmc_username }}"
+        BMC_PASSWORD: "{{ bmc_password }}"
+        BMC_IPMI_INTERFACE: "{{ bmc_ipmi_interface | default('lanplus') }}"
+        BMC_CHANNEL: "{{ bmc_ipmi_channel | default(1) | string }}"
+      register: _bmc_ipmi_users_after_update
+      changed_when: false
+      delegate_to: localhost
+      no_log: true
+      when:
+        - _bmc_user_provider == 'ipmi'
+        - _bmc_admin_users | length > 0
+
+    - name: Confirm IPMI BMC admin users are listed
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              _bmc_ipmi_users_after_update.stdout_lines | default([])
+              | select('match', '^\\s*\\d+\\s+' ~ (item.name | regex_escape) ~ '\\s+')
+              | list
+              | length
+            ) > 0
+        fail_msg: "IPMI BMC admin user {{ item.name }} was not found in the BMC user list."
+        success_msg: "IPMI BMC admin user {{ item.name }} is present in the BMC user list."
+      loop: "{{ _bmc_admin_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+      when:
+        - _bmc_user_provider == 'ipmi'
+        - _bmc_admin_users | length > 0
+
     - name: Read BMC users
       ansible.builtin.uri:
         url: "{{ _bmc_base_url }}/api/settings/users"
@@ -317,6 +401,20 @@
           privilege: "{{ item.privilege | default('') }}"
           accessByChannel: "{{ item.accessByChannel | default('') }}"
           privilegeByChannel: "{{ item.privilegeByChannel | default('') }}"
+          keys: "{{ item.keys() | list | sort }}"
+          sanitized: >-
+            {{
+              item
+              | dict2items
+              | rejectattr('key', 'in', [
+                  'password',
+                  'confirm_password',
+                  'ssh_key',
+                  'email',
+                  'email_id'
+                ])
+              | items2dict
+            }}
       loop: "{{ _bmc_users.json | default([]) }}"
       loop_control:
         label: "{{ item.id | default('?') }} {{ item.name | default('<empty>') }}"
@@ -460,7 +558,14 @@
         _bmc_password_matches: "{{ _bmc_login_check.json.ok | default(1) | int == 0 }}"
         _bmc_desired_email: "{{ item.bmc_email_id | default(item.email_id | default(item.email | default(''))) }}"
         _bmc_existing_email: "{{ _bmc_existing_user.email_id | default(_bmc_existing_user.email | default('')) }}"
-        _bmc_email_matches: "{{ (_bmc_desired_email | length == 0) or (_bmc_existing_email == _bmc_desired_email) }}"
+        _bmc_desired_ssh_key: >-
+          {{
+            item.ssh_key
+            | default(item.ssh_public_key, true)
+            | default(((item.ssh_public_keys | default([])) | first | default('')), true)
+          }}
+        _bmc_existing_ssh_key: "{{ _bmc_existing_user.ssh_key | default('') }}"
+        _bmc_access_matches: "{{ (_bmc_existing_user.access | default(1) | string) == '1' }}"
         _bmc_target_channels: >-
           {{
             (
@@ -479,15 +584,16 @@
           password: "{{ item.password }}"
           confirm_password: "{{ item.password }}"
           password_size: "{{ 'bytes_16' if (item.password | length <= 16) else 'bytes_20' }}"
+          access: 1
           accessByChannel: "({{ (['1'] * (_bmc_channel_values | int)) | join(',') }})"
           privilege: administrator
           privilegeByChannel: "({{ (['administrator'] * (_bmc_channel_values | int)) | join(',') }})"
           snmp_access: "{{ item.bmc_snmp_access | default('read_only') }}"
           snmp_authentication_protocol: "{{ item.bmc_snmp_authentication_protocol | default('sha') }}"
           snmp_privacy_protocol: "{{ item.bmc_snmp_privacy_protocol | default('aes') }}"
-          email_id: "{{ _bmc_desired_email }}"
-          email_format: "{{ item.bmc_email_format | default('ami_format') }}"
-          ssh_key: "{{ _bmc_existing_user.ssh_key | default('') }}"
+          email_id: "{{ _bmc_desired_email if ((_bmc_existing_user.id is not defined) and (_bmc_desired_email | length > 0)) else _bmc_existing_email }}"
+          email_format: "{{ item.bmc_email_format | default(_bmc_existing_user.email_format | default('ami_format')) }}"
+          ssh_key: "{{ _bmc_desired_ssh_key if ((_bmc_existing_user.id is not defined) and (_bmc_desired_ssh_key | length > 0)) else _bmc_existing_ssh_key }}"
       loop: "{{ _bmc_admin_users }}"
       loop_control:
         label: "{{ item.name }}"
@@ -498,7 +604,7 @@
         - _bmc_user_provider == 'web_api'
         - _bmc_admin_users | length > 0
         - _bmc_target_user.id is defined
-        - _bmc_existing_user.id is not defined or not (_bmc_password_matches | bool) or not (_bmc_email_matches | bool)
+        - _bmc_existing_user.id is not defined or not (_bmc_password_matches | bool) or not (_bmc_access_matches | bool)
 
     - name: Require an available BMC user slot
       ansible.builtin.assert:
@@ -565,12 +671,24 @@
             (
               _bmc_users_after_update.json | default([])
               | selectattr('name', 'equalto', item.name)
+              | selectattr('access', 'defined')
+              | selectattr('access', 'equalto', 1)
               | selectattr('privilege', 'equalto', 'administrator')
               | list
               | length
             ) > 0
-        fail_msg: "BMC admin user {{ item.name }} was not found as an administrator account."
-        success_msg: "BMC admin user {{ item.name }} is present with administrator privilege."
+            or
+            (
+              _bmc_users_after_update.json | default([])
+              | selectattr('name', 'equalto', item.name)
+              | selectattr('access', 'defined')
+              | selectattr('access', 'equalto', '1')
+              | selectattr('privilege', 'equalto', 'administrator')
+              | list
+              | length
+            ) > 0
+        fail_msg: "BMC admin user {{ item.name }} was not found as an enabled administrator account."
+        success_msg: "BMC admin user {{ item.name }} is present with enabled administrator privilege."
       loop: "{{ _bmc_admin_users }}"
       loop_control:
         label: "{{ item.name }}"
