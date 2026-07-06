@@ -54,6 +54,9 @@ all:
       vars:
         proxmox_dns_servers:
           - 192.0.2.1
+        proxmox_cluster_name: mbhome
+        proxmox_cluster_primary: mbhome-proxmox-01
+        proxmox_cluster_link_address_var: ansible_host
         proxmox_10gbe_mtu: 1500
         proxmox_nfs_server: 192.0.2.48
         proxmox_nfs_mounts:

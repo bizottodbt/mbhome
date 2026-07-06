@@ -19,7 +19,7 @@ ANSIBLE_INVENTORY       := -i inventory/hosts.yaml $(ANSIBLE_INVENTORY_LOCAL)
 
 DIB_BASE := infrastructure/dib
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -116,6 +116,9 @@ ironic-deploy-proxmox: ## Deploy Proxmox, wait for SSH, then run the Proxmox bas
 
 proxmox-baseline: ## Configure deployed Proxmox nodes (usage: make proxmox-baseline LIMIT=mbhome-proxmox-01)
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/proxmox-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)
+
+proxmox-cluster: ## Create/join the Proxmox cluster (usage: make proxmox-cluster LIMIT='mbhome-proxmox-01:mbhome-proxmox-02')
+	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/proxmox-cluster.yaml $(if $(LIMIT),--limit $(LIMIT),)
 
 bmc-baseline: ## Configure BMC users and board-specific settings (usage: make bmc-baseline LIMIT=mbhome-proxmox-01-bmc)
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/bmc-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)

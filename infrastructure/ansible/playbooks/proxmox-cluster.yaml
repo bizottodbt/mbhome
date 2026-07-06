@@ -1,0 +1,188 @@
+---
+- name: Prepare Proxmox cluster membership
+  hosts: "{{ target_hosts | default('proxmox_nodes') }}"
+  become: true
+  gather_facts: false
+  vars:
+    _proxmox_cluster_primary: "{{ proxmox_cluster_primary | default(groups['proxmox_nodes'] | first) }}"
+    _proxmox_cluster_name: "{{ proxmox_cluster_name | default('mbhome') }}"
+    _proxmox_cluster_link_address_var: "{{ proxmox_cluster_link_address_var | default('ansible_host') }}"
+    _proxmox_cluster_node_address: "{{ hostvars[inventory_hostname][_proxmox_cluster_link_address_var] | default(ansible_host | default(inventory_hostname)) }}"
+    _proxmox_cluster_primary_address: "{{ hostvars[_proxmox_cluster_primary][_proxmox_cluster_link_address_var] | default(hostvars[_proxmox_cluster_primary].ansible_host | default(_proxmox_cluster_primary)) }}"
+
+  pre_tasks:
+    - name: Require primary node to be in the play
+      ansible.builtin.assert:
+        that:
+          - _proxmox_cluster_primary in ansible_play_hosts
+        fail_msg: >-
+          Proxmox cluster primary {{ _proxmox_cluster_primary }} is not in this
+          play. Include it in LIMIT or set proxmox_cluster_primary correctly.
+      run_once: true
+
+    - name: Require cluster node connection addresses
+      ansible.builtin.assert:
+        that:
+          - _proxmox_cluster_node_address | length > 0
+        fail_msg: >-
+          Missing Proxmox cluster link address for {{ inventory_hostname }}.
+          Set ansible_host or {{ _proxmox_cluster_link_address_var }}.
+
+  tasks:
+    - name: Keep Proxmox node names resolvable on every cluster member
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED PROXMOX CLUSTER HOSTS"
+        block: |
+          {% for node in ansible_play_hosts | sort %}
+          {{ hostvars[node][_proxmox_cluster_link_address_var] | default(hostvars[node].ansible_host | default(node)) }} {{ node }}
+          {% endfor %}
+
+    - name: Check whether node is already clustered
+      ansible.builtin.stat:
+        path: /etc/pve/corosync.conf
+      register: _proxmox_cluster_config
+
+    - name: Record cluster membership state
+      ansible.builtin.set_fact:
+        _proxmox_is_clustered: "{{ _proxmox_cluster_config.stat.exists | bool }}"
+
+    - name: Ensure root SSH directory exists on join nodes
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      when:
+        - inventory_hostname != _proxmox_cluster_primary
+        - not _proxmox_is_clustered | bool
+
+    - name: Create root SSH key for non-interactive cluster join
+      ansible.builtin.command:
+        argv:
+          - ssh-keygen
+          - -t
+          - ed25519
+          - -N
+          - ""
+          - -f
+          - /root/.ssh/id_ed25519
+      args:
+        creates: /root/.ssh/id_ed25519
+      when:
+        - inventory_hostname != _proxmox_cluster_primary
+        - not _proxmox_is_clustered | bool
+
+    - name: Read join node root SSH public keys
+      ansible.builtin.slurp:
+        src: /root/.ssh/id_ed25519.pub
+      register: _proxmox_join_root_public_key
+      when:
+        - inventory_hostname != _proxmox_cluster_primary
+        - not _proxmox_is_clustered | bool
+
+    - name: Authorize join node root SSH keys on the primary
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ hostvars[item]._proxmox_join_root_public_key.content | b64decode }}"
+        state: present
+        comment: "proxmox-cluster-join {{ item }}"
+      loop: "{{ ansible_play_hosts | difference([_proxmox_cluster_primary]) }}"
+      delegate_to: "{{ _proxmox_cluster_primary }}"
+      when:
+        - hostvars[item]._proxmox_join_root_public_key is defined
+        - not hostvars[item]._proxmox_is_clustered | bool
+      run_once: true
+
+    - name: Trust primary host key on join nodes
+      ansible.builtin.shell: |
+        set -e
+        ssh-keygen -R "{{ _proxmox_cluster_primary_address }}" >/dev/null 2>&1 || true
+        ssh-keyscan -H "{{ _proxmox_cluster_primary_address }}" >> /root/.ssh/known_hosts
+      args:
+        executable: /bin/bash
+      changed_when: true
+      when:
+        - inventory_hostname != _proxmox_cluster_primary
+        - not _proxmox_is_clustered | bool
+
+    - name: Create Proxmox cluster on primary
+      ansible.builtin.command:
+        argv:
+          - pvecm
+          - create
+          - "{{ _proxmox_cluster_name }}"
+          - --link0
+          - "{{ _proxmox_cluster_node_address }}"
+      register: _proxmox_cluster_create
+      changed_when: true
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - not _proxmox_is_clustered | bool
+
+    - name: Wait for primary cluster filesystem
+      ansible.builtin.wait_for:
+        path: /etc/pve/corosync.conf
+        timeout: 120
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+
+    - name: Join Proxmox cluster from secondary nodes
+      ansible.builtin.command:
+        argv:
+          - pvecm
+          - add
+          - "{{ _proxmox_cluster_primary_address }}"
+          - --use_ssh
+          - "1"
+          - --link0
+          - "{{ _proxmox_cluster_node_address }}"
+      register: _proxmox_cluster_join
+      changed_when: true
+      throttle: 1
+      when:
+        - inventory_hostname != _proxmox_cluster_primary
+        - not _proxmox_is_clustered | bool
+
+    - name: Print Proxmox cluster join output
+      ansible.builtin.debug:
+        msg: "{{ (_proxmox_cluster_join.stdout_lines | default([])) + (_proxmox_cluster_join.stderr_lines | default([])) }}"
+      when:
+        - inventory_hostname != _proxmox_cluster_primary
+        - _proxmox_cluster_join is defined
+        - _proxmox_cluster_join is changed
+
+    - name: Wait for secondary cluster filesystem
+      ansible.builtin.wait_for:
+        path: /etc/pve/corosync.conf
+        timeout: 180
+      when:
+        - inventory_hostname != _proxmox_cluster_primary
+        - not _proxmox_is_clustered | bool
+
+    - name: Refresh cluster membership state
+      ansible.builtin.stat:
+        path: /etc/pve/corosync.conf
+      register: _proxmox_cluster_config_after
+
+    - name: Confirm every target node is clustered
+      ansible.builtin.assert:
+        that:
+          - _proxmox_cluster_config_after.stat.exists
+        fail_msg: "{{ inventory_hostname }} is not clustered after proxmox-cluster run."
+        success_msg: "{{ inventory_hostname }} is clustered."
+
+    - name: Show Proxmox cluster status
+      ansible.builtin.command:
+        argv:
+          - pvecm
+          - status
+      register: _proxmox_cluster_status
+      changed_when: false
+      when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Print Proxmox cluster status
+      ansible.builtin.debug:
+        var: _proxmox_cluster_status.stdout_lines
+      when: inventory_hostname == _proxmox_cluster_primary

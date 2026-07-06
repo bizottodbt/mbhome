@@ -572,6 +572,49 @@ User name: <user>
 Realm: Linux PAM standard authentication
 ```
 
+### Create the Proxmox cluster
+
+Create the Proxmox cluster only after the target nodes have booted into the
+deployed OS and `make proxmox-baseline` has completed successfully. The cluster
+playbook uses the management address from inventory for corosync by default,
+which is the right starting point while only some nodes have 10 GbE.
+Join nodes should be fresh Proxmox installs without local guests or storage
+state that must be preserved.
+
+Configure these values in git-ignored
+`infrastructure/ansible/inventory/hosts.local.yaml`:
+
+```yaml
+proxmox_cluster_name: mbhome
+proxmox_cluster_primary: mbhome-proxmox-01
+proxmox_cluster_link_address_var: ansible_host
+```
+
+Then create the cluster from the first two deployed nodes:
+
+```bash
+make proxmox-cluster LIMIT='mbhome-proxmox-01:mbhome-proxmox-02'
+```
+
+The playbook:
+
+- Ensures each clustered node can resolve the other Proxmox node names
+- Creates the cluster on `proxmox_cluster_primary` if it is not clustered yet
+- Joins the other nodes one at a time through `pvecm add --use_ssh 1`
+- Leaves already-clustered nodes alone on later runs
+
+Verify from any Proxmox node:
+
+```bash
+pvecm status
+pvecm nodes
+```
+
+With only two Proxmox nodes, the cluster is useful for centralized management
+but it is not a comfortable HA foundation yet. If one node is offline, quorum
+can block cluster-wide changes. Before enabling HA, add the third Proxmox node
+or configure a qdevice witness.
+
 ---
 
 ## k3s App Cluster (Phase 2 — requires Proxmox)
