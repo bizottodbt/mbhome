@@ -3,6 +3,8 @@ local.mk
 infrastructure/ansible/inventory/hosts.local.yaml
 infrastructure/ansible/vars/bmc-users.local.yaml
 infrastructure/ansible/vars/homelab.local.yaml
+infrastructure/ansible/vars/proxmox-api-users.local.yaml
+infrastructure/ansible/vars/proxmox-api-tokens.local.generated
 infrastructure/ansible/vars/proxmox-users.local.yaml
 infrastructure/ironic/nodes/proxmox-nodes.yaml
 
@@ -32,6 +34,7 @@ infrastructure/kolla-ansible/config/ironic/ironic-agent*.initramfs
 .terraform/
 .terraform.lock.hcl
 *.tfvars
+!*.example.tfvars
 
 # kubeconfig fragments
 *.kubeconfig

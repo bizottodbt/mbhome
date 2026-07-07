@@ -502,6 +502,39 @@ If an Unraid share does not exist yet, keep that mount with `enabled: false`.
 When the share is created and exported from Unraid, flip it to `enabled: true`
 and rerun the baseline.
 
+The baseline also aligns Proxmox storage content types. By default, `local` is
+allowed to store backups, ISOs, snippets, container templates, VM disks,
+container rootdirs, and imported disk images. The `import` content type is
+required by the Terraform smoke VM when it downloads a Debian cloud image into
+Proxmox.
+
+The DIB-built Proxmox image starts with DHCP on the physical management NIC; it
+does not create Proxmox's usual `vmbr0` bridge automatically. Terraform-created
+VMs need a Linux bridge, so enable one in
+`infrastructure/ansible/inventory/hosts.local.yaml` before creating VMs:
+
+```yaml
+proxmox_vm_bridges:
+  - name: vmbr0
+    # Optional: use the physical management NIC MAC to keep an existing
+    # router DHCP reservation after DHCP moves from the NIC to vmbr0.
+    # mac: 00:00:00:00:00:01
+    ports:
+      - enp3s0   # management NIC on the MJ11 nodes; adjust if a node differs
+    dhcp4: true
+    link_local: false
+    ipv6_accept_ra: false
+```
+
+This moves the management DHCP lease onto `vmbr0` and enslaves the physical NIC
+as a bridge port. SSH may briefly disconnect while `systemd-networkd` restarts.
+After rerunning the baseline, verify the bridge before retrying Terraform:
+
+```bash
+ip -br addr show vmbr0
+bridge link
+```
+
 The planned 10 GbE storage network is VLAN-only on the UniFi switch:
 
 ```text
@@ -588,6 +621,9 @@ Configure these values in git-ignored
 proxmox_cluster_name: mbhome
 proxmox_cluster_primary: mbhome-proxmox-01
 proxmox_cluster_link_address_var: ansible_host
+proxmox_cluster_migration:
+  network: 192.0.2.0/24
+  type: secure
 ```
 
 Then create the cluster from the first two deployed nodes:
@@ -601,6 +637,8 @@ The playbook:
 - Ensures each clustered node can resolve the other Proxmox node names
 - Creates the cluster on `proxmox_cluster_primary` if it is not clustered yet
 - Joins the other nodes one at a time through `pvecm add --use_ssh 1`
+- Configures cluster live migration settings from `proxmox_cluster_migration`
+- Registers any `proxmox_cluster_nfs_storages` as cluster-wide Proxmox storage
 - Leaves already-clustered nodes alone on later runs
 
 Verify from any Proxmox node:
@@ -614,6 +652,150 @@ With only two Proxmox nodes, the cluster is useful for centralized management
 but it is not a comfortable HA foundation yet. If one node is offline, quorum
 can block cluster-wide changes. Before enabling HA, add the third Proxmox node
 or configure a qdevice witness.
+
+For live migration tests, define a shared NFS datastore reachable by every
+cluster node. While only one Proxmox node has 10 GbE, use Unraid's management
+address so both nodes can mount the same storage ID:
+
+Keep migration traffic on the management subnet until every node has 10 GbE:
+
+```yaml
+proxmox_cluster_migration:
+  network: 192.0.2.0/24
+  type: secure
+```
+
+After every node has an address on the 10 GbE storage network, change only the
+network value, for example `10.20.90.0/24`.
+
+```yaml
+proxmox_cluster_nfs_storages:
+  - storage: proxmox-vms
+    server: 192.0.2.48
+    export: /mnt/user/proxmox-vms
+    content:
+      - images
+    options: vers=4.2
+```
+
+After changing storage definitions, rerun:
+
+```bash
+make proxmox-cluster LIMIT='mbhome-proxmox-01:mbhome-proxmox-02'
+```
+
+Verify from either node:
+
+```bash
+pvesm status
+pvesm config proxmox-vms
+```
+
+### Configure Proxmox API automation users
+
+Proxmox users, ACLs, and API tokens are cluster-wide. A token created for
+`terraform@pve` can be used against any node's API URL in the cluster, as long
+as that node is online and reachable.
+
+The cluster playbook can create Proxmox-only automation users for Terraform.
+These are not Linux/PAM users: they do not get SSH access, sudo, a shell, or a
+Linux UID.
+
+Create the local vars file:
+
+```bash
+cp infrastructure/ansible/vars/proxmox-api-users.local.example.yaml \
+  infrastructure/ansible/vars/proxmox-api-users.local.yaml
+```
+
+The example creates `terraform@pve` with an API token named `mbhome` and grants
+`Administrator` at `/`. That is intentionally broad for the first lab pass.
+Later, tighten the role/path once the Terraform VM workflow is stable.
+
+Run the cluster playbook again after editing the file:
+
+```bash
+make proxmox-cluster LIMIT='mbhome-proxmox-01:mbhome-proxmox-02'
+```
+
+If a token is created, Proxmox shows the token secret only once. The playbook
+writes newly generated secrets to this git-ignored local file:
+
+```text
+infrastructure/ansible/vars/proxmox-api-tokens.local.generated
+```
+
+Copy the generated `user@realm!tokenid=secret` value into the relevant
+Terraform vars file. Existing token secrets cannot be recovered; delete and
+recreate the token if the secret is lost.
+
+### Create a disposable Proxmox smoke VM
+
+Before building the real k3s layout, use the smoke VM Terraform stack to verify
+that the Proxmox API token, datastore, bridge, cloud-init, and VM boot path all
+work through the cluster.
+
+Install Terraform on the controller if it is not already available. The make
+targets expect a `terraform` binary on `PATH`:
+
+```bash
+terraform version
+```
+
+Create the local vars file:
+
+```bash
+cp infrastructure/terraform/proxmox-smoke-vm/terraform.example.tfvars \
+  infrastructure/terraform/proxmox-smoke-vm/terraform.local.tfvars
+```
+
+Edit `terraform.local.tfvars`:
+
+- `proxmox_api_url`: any clustered Proxmox node UI/API URL
+- `proxmox_api_token`: token in `user@realm!tokenid=secret` format
+- `proxmox_ssh_username`: SSH user for host-side disk import operations, usually `root` in this lab
+- `proxmox_node`: the Proxmox node that should create the VM
+- `vm_datastore_id`: start with `local`; use `proxmox-vms` for live migration
+- `cloud_init_datastore_id`: use the same shared datastore as the VM disk for live migration
+- `vm_network_bridge`: usually `vmbr0`
+
+The Proxmox API token and provider SSH access are separate. The `terraform@pve`
+API user does not need SSH access. The BPG provider still uses SSH for some
+host-side operations such as `qm disk import`; `~/.ssh/config` is not used by
+the provider, so the SSH username must be set explicitly and the key must be
+loaded in `ssh-agent`:
+
+```bash
+ssh-add -L
+ssh root@<proxmox-node-ip>
+```
+
+Then create the VM:
+
+```bash
+make proxmox-smoke-vm-init
+make proxmox-smoke-vm-plan
+make proxmox-smoke-vm-apply
+```
+
+The stack creates a tiny Debian 13 cloud-init VM named `mbhome-smoke-01`, using
+DHCP and the SSH key from `ssh_public_key_file`. Find its lease in the router
+or Proxmox UI, then test:
+
+```bash
+ssh debian@<smoke-vm-ip>
+```
+
+If Proxmox rejects the imported Debian cloud image because `local` does not
+allow imported disk images, enable the `Disk image` / `Import` content type on
+that storage in the Proxmox UI, or point `image_datastore_id` at a datastore
+that supports imports.
+
+Destroy it when done:
+
+```bash
+make proxmox-smoke-vm-destroy
+```
 
 ---
 

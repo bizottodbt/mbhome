@@ -1,0 +1,14 @@
+# Managed by Ansible. Proxmox VM bridge port for {{ inventory_hostname }}.
+[Match]
+Name={{ item.1 }}
+
+[Link]
+RequiredForOnline=no
+{% if item.0.mtu | default('') %}
+MTUBytes={{ item.0.mtu }}
+{% endif %}
+
+[Network]
+Bridge={{ item.0.name }}
+LinkLocalAddressing=no
+IPv6AcceptRA=no

@@ -57,7 +57,60 @@ all:
         proxmox_cluster_name: mbhome
         proxmox_cluster_primary: mbhome-proxmox-01
         proxmox_cluster_link_address_var: ansible_host
+        proxmox_cluster_migration:
+          network: 192.0.2.0/24
+          type: secure
+        proxmox_cluster_nfs_storages:
+          - storage: proxmox-vms
+            server: 192.0.2.48
+            export: /mnt/user/proxmox-vms
+            content:
+              - images
+              - rootdir
+            options: vers=4.2
+
+          - storage: proxmox-isos
+            server: 192.0.2.48
+            export: /mnt/user/proxmox-isos
+            content:
+              - iso
+              - vztmpl
+            options: vers=4.2
+
+          - storage: proxmox-snippets
+            server: 192.0.2.48
+            export: /mnt/user/proxmox-snippets
+            content:
+              - snippets
+            options: vers=4.2
+
+          - storage: proxmox-backup
+            server: 192.0.2.48
+            export: /mnt/user/proxmox-backup
+            content:
+              - backup
+            options: vers=4.2
         proxmox_10gbe_mtu: 1500
+        proxmox_storage_content:
+          - storage: local
+            content:
+              - backup
+              - import
+              - images
+              - iso
+              - rootdir
+              - snippets
+              - vztmpl
+        proxmox_vm_bridges:
+          - name: vmbr0
+            # Optional: set this to the management NIC MAC if your router DHCP
+            # reservation should keep following the bridged management address.
+            # mac: 00:00:00:00:00:01
+            ports:
+              - enp3s0
+            dhcp4: true
+            link_local: false
+            ipv6_accept_ra: false
         proxmox_nfs_server: 192.0.2.48
         proxmox_nfs_mounts:
           - path: /mnt/proxmox-vms

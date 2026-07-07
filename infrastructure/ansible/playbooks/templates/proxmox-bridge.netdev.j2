@@ -1,0 +1,7 @@
+# Managed by Ansible. Proxmox VM bridge for {{ inventory_hostname }}.
+[NetDev]
+Name={{ item.name }}
+Kind=bridge
+{% if item.mac | default('') %}
+MACAddress={{ item.mac }}
+{% endif %}

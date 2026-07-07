@@ -5,6 +5,16 @@
   become: true
   vars:
     proxmox_users_file: "{{ playbook_dir }}/../vars/proxmox-users.local.yaml"
+    _proxmox_storage_content_default:
+      - storage: local
+        content:
+          - backup
+          - import
+          - images
+          - iso
+          - rootdir
+          - snippets
+          - vztmpl
   roles:
     - common
 
@@ -65,6 +75,84 @@
       loop: "{{ _proxmox_10gbe_networks.results | default([]) | selectattr('changed') | list }}"
       changed_when: true
       failed_when: false
+
+    - name: Initialize expected Proxmox bridge networkd file list
+      ansible.builtin.set_fact:
+        _proxmox_bridge_expected_files: []
+
+    - name: Add expected Proxmox bridge device and network files
+      ansible.builtin.set_fact:
+        _proxmox_bridge_expected_files: >-
+          {{
+            _proxmox_bridge_expected_files
+            + [
+              '/etc/systemd/network/05-proxmox-bridge-' ~ item.name ~ '.netdev',
+              '/etc/systemd/network/05-proxmox-bridge-' ~ item.name ~ '.network'
+            ]
+          }}
+      loop: "{{ proxmox_vm_bridges | default([]) }}"
+
+    - name: Add expected Proxmox bridge port network files
+      ansible.builtin.set_fact:
+        _proxmox_bridge_expected_files: >-
+          {{
+            _proxmox_bridge_expected_files
+            + [
+              '/etc/systemd/network/05-proxmox-bridge-port-' ~ item.0.name ~ '-' ~ item.1 ~ '.network'
+            ]
+          }}
+      loop: "{{ query('subelements', proxmox_vm_bridges | default([]), 'ports', {'skip_missing': true}) }}"
+
+    - name: Find old managed Proxmox bridge network configs
+      ansible.builtin.find:
+        paths: /etc/systemd/network
+        patterns:
+          - "05-proxmox-bridge-*.netdev"
+          - "05-proxmox-bridge-*.network"
+          - "05-proxmox-bridge-port-*.network"
+        file_type: file
+      register: _proxmox_bridge_old_configs
+
+    - name: Remove stale managed Proxmox bridge network configs
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ _proxmox_bridge_old_configs.files | default([]) }}"
+      notify: Restart systemd-networkd
+      when: item.path not in (_proxmox_bridge_expected_files | default([]))
+
+    - name: Configure Proxmox VM bridge devices
+      ansible.builtin.template:
+        src: proxmox-bridge.netdev.j2
+        dest: "/etc/systemd/network/05-proxmox-bridge-{{ item.name }}.netdev"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ proxmox_vm_bridges | default([]) }}"
+      notify: Restart systemd-networkd
+
+    - name: Configure Proxmox VM bridge networks
+      ansible.builtin.template:
+        src: proxmox-bridge.network.j2
+        dest: "/etc/systemd/network/05-proxmox-bridge-{{ item.name }}.network"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ proxmox_vm_bridges | default([]) }}"
+      notify: Restart systemd-networkd
+
+    - name: Configure Proxmox VM bridge ports
+      ansible.builtin.template:
+        src: proxmox-bridge-port.network.j2
+        dest: "/etc/systemd/network/05-proxmox-bridge-port-{{ item.0.name }}-{{ item.1 }}.network"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ query('subelements', proxmox_vm_bridges | default([]), 'ports', {'skip_missing': true}) }}"
+      notify: Restart systemd-networkd
+
+    - name: Apply changed Proxmox bridge network files before continuing
+      ansible.builtin.meta: flush_handlers
 
     - name: Keep Proxmox kernel parameters aligned with the DIB image
       ansible.builtin.copy:
@@ -189,6 +277,17 @@
       changed_when: true
       when: _proxmox_missing_packages | length > 0
 
+    - name: Configure Proxmox storage content types
+      ansible.builtin.command:
+        argv:
+          - pvesm
+          - set
+          - "{{ item.storage }}"
+          - --content
+          - "{{ item.content | join(',') }}"
+      loop: "{{ proxmox_storage_content | default(_proxmox_storage_content_default) }}"
+      changed_when: false
+
     - name: Ensure Proxmox admin users exist
       ansible.builtin.user:
         name: "{{ item.name }}"
@@ -309,6 +408,11 @@
     - name: Reload systemd-networkd
       ansible.builtin.command: networkctl reload
       changed_when: true
+
+    - name: Restart systemd-networkd
+      ansible.builtin.systemd:
+        name: systemd-networkd
+        state: restarted
 
     - name: Update grub
       ansible.builtin.command: update-grub

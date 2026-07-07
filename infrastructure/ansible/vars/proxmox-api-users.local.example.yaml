@@ -1,0 +1,18 @@
+# Copy this file to proxmox-api-users.local.yaml and replace the example values.
+# proxmox-api-users.local.yaml is git-ignored because it describes local
+# automation identities and can cause token secrets to be generated.
+#
+# These are Proxmox VE realm users, not Linux/PAM users. They do not get SSH,
+# sudo, a shell, or a Linux UID.
+proxmox_api_users:
+  - userid: terraform@pve
+    comment: "Terraform automation"
+    enabled: true
+    acl_path: /
+    role: Administrator
+    tokens:
+      - token_id: mbhome
+        comment: "Terraform token for mbhome"
+        # false means the token inherits the user's permissions. This is the
+        # easiest first lab setup. Use true later if you want token-specific ACLs.
+        privsep: false

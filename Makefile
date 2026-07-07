@@ -18,11 +18,13 @@ ANSIBLE_INVENTORY_ROOT  := -i $(ANSIBLE_DIR)/inventory/hosts.yaml $(if $(wildcar
 ANSIBLE_INVENTORY       := -i inventory/hosts.yaml $(ANSIBLE_INVENTORY_LOCAL)
 
 DIB_BASE := infrastructure/dib
+PROXMOX_SMOKE_TF_DIR := infrastructure/terraform/proxmox-smoke-vm
+PROXMOX_SMOKE_TF_VARS := $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
+	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*##"}; {printf "  %-20s %s\n", $$1, $$2}'
 
 ansible-collections: ## Install Ansible collections used by infrastructure playbooks
@@ -119,6 +121,18 @@ proxmox-baseline: ## Configure deployed Proxmox nodes (usage: make proxmox-basel
 
 proxmox-cluster: ## Create/join the Proxmox cluster (usage: make proxmox-cluster LIMIT='mbhome-proxmox-01:mbhome-proxmox-02')
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/proxmox-cluster.yaml $(if $(LIMIT),--limit $(LIMIT),)
+
+proxmox-smoke-vm-init: ## Initialize Terraform for the disposable Proxmox smoke VM
+	cd $(PROXMOX_SMOKE_TF_DIR) && terraform init
+
+proxmox-smoke-vm-plan: ## Plan the disposable Proxmox smoke VM
+	cd $(PROXMOX_SMOKE_TF_DIR) && terraform plan $(PROXMOX_SMOKE_TF_VARS)
+
+proxmox-smoke-vm-apply: ## Create/update the disposable Proxmox smoke VM
+	cd $(PROXMOX_SMOKE_TF_DIR) && terraform apply $(PROXMOX_SMOKE_TF_VARS)
+
+proxmox-smoke-vm-destroy: ## Destroy the disposable Proxmox smoke VM
+	cd $(PROXMOX_SMOKE_TF_DIR) && terraform destroy $(PROXMOX_SMOKE_TF_VARS)
 
 bmc-baseline: ## Configure BMC users and board-specific settings (usage: make bmc-baseline LIMIT=mbhome-proxmox-01-bmc)
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/bmc-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)

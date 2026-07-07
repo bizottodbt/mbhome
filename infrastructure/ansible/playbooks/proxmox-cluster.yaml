@@ -4,6 +4,8 @@
   become: true
   gather_facts: false
   vars:
+    proxmox_api_users_file: "{{ playbook_dir }}/../vars/proxmox-api-users.local.yaml"
+    proxmox_api_token_output_file: "{{ playbook_dir }}/../vars/proxmox-api-tokens.local.generated"
     _proxmox_cluster_primary: "{{ proxmox_cluster_primary | default(groups['proxmox_nodes'] | first) }}"
     _proxmox_cluster_name: "{{ proxmox_cluster_name | default('mbhome') }}"
     _proxmox_cluster_link_address_var: "{{ proxmox_cluster_link_address_var | default('ansible_host') }}"
@@ -11,6 +13,19 @@
     _proxmox_cluster_primary_address: "{{ hostvars[_proxmox_cluster_primary][_proxmox_cluster_link_address_var] | default(hostvars[_proxmox_cluster_primary].ansible_host | default(_proxmox_cluster_primary)) }}"
 
   pre_tasks:
+    - name: Check for local Proxmox API user vars
+      ansible.builtin.stat:
+        path: "{{ proxmox_api_users_file }}"
+      delegate_to: localhost
+      become: false
+      register: _proxmox_api_users_file
+
+    - name: Load local Proxmox API user vars
+      ansible.builtin.include_vars:
+        file: "{{ proxmox_api_users_file }}"
+      no_log: true
+      when: _proxmox_api_users_file.stat.exists
+
     - name: Require primary node to be in the play
       ansible.builtin.assert:
         that:
@@ -186,3 +201,222 @@
       ansible.builtin.debug:
         var: _proxmox_cluster_status.stdout_lines
       when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Configure Proxmox cluster migration settings
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - set
+          - /cluster/options
+          - --migration
+          - >-
+            {{
+              (
+                ['type=' ~ (proxmox_cluster_migration.type | default('secure'))]
+                + (
+                  ['network=' ~ proxmox_cluster_migration.network]
+                  if proxmox_cluster_migration.network | default('') | length > 0
+                  else []
+                )
+              ) | join(',')
+            }}
+      changed_when: false
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_migration is defined
+
+    - name: Check Proxmox cluster NFS storage definitions
+      ansible.builtin.command:
+        argv:
+          - pvesm
+          - status
+          - --storage
+          - "{{ item.storage }}"
+      register: _proxmox_cluster_nfs_storage_status
+      changed_when: false
+      failed_when: false
+      loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Add missing Proxmox cluster NFS storages
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'pvesm',
+              'add',
+              'nfs',
+              item.item.storage,
+              '--server',
+              item.item.server,
+              '--export',
+              item.item.export,
+              '--content',
+              item.item.content | default(['images']) | join(',')
+            ]
+            + (['--options', item.item.options] if item.item.options is defined else [])
+            + (['--nodes', item.item.nodes | join(',')] if item.item.nodes is defined else [])
+          }}
+      changed_when: true
+      loop: "{{ _proxmox_cluster_nfs_storage_status.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - item.rc != 0
+
+    - name: Align Proxmox cluster NFS storage content and options
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'pvesm',
+              'set',
+              item.storage,
+              '--content',
+              item.content | default(['images']) | join(',')
+            ]
+            + (['--options', item.options] if item.options is defined else [])
+            + (['--nodes', item.nodes | join(',')] if item.nodes is defined else [])
+          }}
+      changed_when: false
+      loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Ensure Proxmox API users exist on the cluster
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - add
+          - "{{ item.userid }}"
+          - --comment
+          - "{{ item.comment | default(item.userid) }}"
+          - --enable
+          - "{{ 1 if item.enabled | default(true) | bool else 0 }}"
+      register: _proxmox_api_user_add
+      changed_when: _proxmox_api_user_add.rc == 0
+      failed_when: >-
+        _proxmox_api_user_add.rc != 0 and
+        'already exists' not in ((_proxmox_api_user_add.stdout | default('')) ~ (_proxmox_api_user_add.stderr | default('')))
+      loop: "{{ proxmox_api_users | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+      no_log: true
+
+    - name: Align Proxmox API user properties
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - modify
+          - "{{ item.userid }}"
+          - --comment
+          - "{{ item.comment | default(item.userid) }}"
+          - --enable
+          - "{{ 1 if item.enabled | default(true) | bool else 0 }}"
+      changed_when: false
+      loop: "{{ proxmox_api_users | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+      no_log: true
+
+    - name: Grant Proxmox API user permissions
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - aclmod
+          - "{{ item.acl_path | default('/') }}"
+          - -user
+          - "{{ item.userid }}"
+          - -role
+          - "{{ item.role | default('Administrator') }}"
+      changed_when: false
+      loop: "{{ proxmox_api_users | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+      no_log: true
+
+    - name: List existing Proxmox API user tokens
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - token
+          - list
+          - "{{ item.userid }}"
+          - --output-format
+          - json
+      register: _proxmox_api_token_lists
+      changed_when: false
+      loop: "{{ proxmox_api_users | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+      no_log: true
+
+    - name: Create missing Proxmox API tokens
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - token
+          - add
+          - "{{ item.0.userid }}"
+          - "{{ item.1.token_id }}"
+          - --comment
+          - "{{ item.1.comment | default(item.1.token_id) }}"
+          - --privsep
+          - "{{ 1 if item.1.privsep | default(false) | bool else 0 }}"
+          - --output-format
+          - json
+      register: _proxmox_api_token_add
+      changed_when: true
+      loop: "{{ query('subelements', proxmox_api_users | default([]), 'tokens', {'skip_missing': true}) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - >-
+          (
+            _proxmox_api_token_lists.results
+            | selectattr('item.userid', 'equalto', item.0.userid)
+            | map(attribute='stdout')
+            | first
+            | default('[]', true)
+            | from_json
+            | selectattr('tokenid', 'equalto', item.1.token_id)
+            | list
+            | length
+          ) == 0
+      no_log: true
+
+    - name: Ensure generated Proxmox API token output file exists locally
+      ansible.builtin.file:
+        path: "{{ proxmox_api_token_output_file }}"
+        state: touch
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      when:
+        - hostvars[_proxmox_cluster_primary]._proxmox_api_token_add is defined
+        - hostvars[_proxmox_cluster_primary]._proxmox_api_token_add.results | default([]) | selectattr('changed') | list | length > 0
+      no_log: true
+
+    - name: Save newly generated Proxmox API token secrets locally
+      ansible.builtin.lineinfile:
+        path: "{{ proxmox_api_token_output_file }}"
+        regexp: "^{{ item.item.0.userid | regex_escape }}!{{ item.item.1.token_id | regex_escape }}="
+        line: "{{ item.item.0.userid }}!{{ item.item.1.token_id }}={{ (item.stdout | from_json).value }}"
+        mode: "0600"
+        create: true
+      loop: "{{ hostvars[_proxmox_cluster_primary]._proxmox_api_token_add.results | default([]) | selectattr('changed') | list }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      when: hostvars[_proxmox_cluster_primary]._proxmox_api_token_add is defined
+      no_log: true
+
+    - name: Report generated Proxmox API token output file
+      ansible.builtin.debug:
+        msg: >-
+          New Proxmox API token secret(s) were written to
+          {{ proxmox_api_token_output_file }}. Copy the required
+          user@realm!tokenid=secret value into the appropriate Terraform
+          terraform.tfvars file. Existing token secrets cannot be recovered.
+      run_once: true
+      when:
+        - hostvars[_proxmox_cluster_primary]._proxmox_api_token_add is defined
+        - hostvars[_proxmox_cluster_primary]._proxmox_api_token_add.results | default([]) | selectattr('changed') | list | length > 0
