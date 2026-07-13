@@ -941,6 +941,30 @@ sets the static IPv4 address, gateway, and DNS servers from inventory. If the
 first run uses temporary DHCP addresses, update `ansible_host` to the final
 static addresses after the network task completes.
 
+Set the AD forest variables in `inventory/hosts.local.yaml` before creating
+the domain:
+
+```yaml
+windows_domain_controllers:
+  vars:
+    windows_ad_domain_name: ad.example.test
+    windows_ad_domain_netbios_name: AD
+    windows_ad_safe_mode_password: CHANGE_ME_DSRM
+    windows_ad_domain_mode: WinThreshold
+    windows_ad_forest_mode: WinThreshold
+```
+
+Then create the initial forest on the primary DC:
+
+```bash
+make windows-ad-forest
+```
+
+The forest playbook promotes `mbhome-ad-01`, creates a new forest, enables DNS,
+uses the requested DSRM password, disables NetBIOS over TCP/IP, and leaves the
+server ready for a separate replica-promotion playbook. `WinThreshold` is the
+newest functional level accepted by modern AD DS deployment cmdlets.
+
 Terraform should stop at VM lifecycle, placement, and basic hardware. Domain
 creation, replication, DNS, time sync, and promotion/demotion are better
 handled after boot with PowerShell DSC or Ansible Windows modules over WinRM.

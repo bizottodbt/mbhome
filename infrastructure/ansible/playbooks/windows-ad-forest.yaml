@@ -1,0 +1,165 @@
+---
+- name: Create the Microsoft AD DS forest
+  hosts: windows_ad_primary
+  gather_facts: false
+
+  vars:
+    _windows_ad_domain_netbios_name: >-
+      {{ windows_ad_domain_netbios_name
+         | default(windows_ad_domain_name.split('.')[0] | upper) }}
+    _windows_ad_domain_mode: "{{ windows_ad_domain_mode | default('WinThreshold') }}"
+    _windows_ad_forest_mode: "{{ windows_ad_forest_mode | default('WinThreshold') }}"
+    _windows_ad_dns_client_servers: >-
+      {{ windows_ad_dns_client_servers
+         | default([windows_static_ip | default(ansible_host)]) }}
+
+  tasks:
+    - name: Validate AD forest variables
+      ansible.builtin.assert:
+        that:
+          - windows_ad_domain_name is defined
+          - windows_ad_domain_name | length > 0
+          - windows_ad_domain_name is match('^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$')
+          - _windows_ad_domain_netbios_name | length > 0
+          - _windows_ad_domain_netbios_name | length <= 15
+          - _windows_ad_domain_netbios_name is match('^[A-Za-z0-9]+$')
+          - windows_ad_safe_mode_password is defined
+          - windows_ad_safe_mode_password | length >= 8
+        fail_msg: >-
+          Set windows_ad_domain_name and windows_ad_safe_mode_password for the
+          windows_domain_controllers group in inventory/hosts.local.yaml. The
+          optional windows_ad_domain_netbios_name must be 15 characters or fewer.
+
+    - name: Wait for WinRM
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ windows_wait_timeout | default(600) }}"
+
+    - name: Disable NetBIOS over TCP/IP
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $Changed = $false
+
+        $Configs = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter "IPEnabled = True"
+        foreach ($Config in $Configs) {
+          if ($Config.TcpipNetbiosOptions -ne 2) {
+            $Result = $Config.SetTcpipNetbios(2)
+            if ($Result.ReturnValue -ne 0) {
+              throw "Failed to disable NetBIOS on interface index $($Config.InterfaceIndex). ReturnValue=$($Result.ReturnValue)"
+            }
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_netbios
+      changed_when: "'CHANGED=True' in _windows_ad_netbios.stdout"
+
+    - name: Create AD DS forest with DNS
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+
+        $DomainName = "{{ windows_ad_domain_name }}"
+        $NetbiosName = "{{ _windows_ad_domain_netbios_name }}"
+        $DomainMode = "{{ _windows_ad_domain_mode }}"
+        $ForestMode = "{{ _windows_ad_forest_mode }}"
+        $SafeModePassword = ConvertTo-SecureString $env:WINDOWS_AD_DSRM_PASSWORD -AsPlainText -Force
+
+        Import-Module ADDSDeployment
+
+        try {
+          Import-Module ActiveDirectory -ErrorAction Stop
+          $ExistingDomain = Get-ADDomain -ErrorAction Stop
+          if ($ExistingDomain.DNSRoot -ieq $DomainName) {
+            Write-Output "CHANGED=False"
+            Write-Output "DOMAIN_EXISTS=$($ExistingDomain.DNSRoot)"
+            exit 0
+          }
+
+          throw "This server is already joined to AD domain $($ExistingDomain.DNSRoot), not $DomainName."
+        } catch [Microsoft.ActiveDirectory.Management.ADServerDownException] {
+          # Expected before the first forest exists.
+        } catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
+          # Expected before the first forest exists.
+        } catch {
+          if ($_.Exception.Message -notmatch "Unable to find a default server|The server is not operational|The specified domain either does not exist") {
+            throw
+          }
+        }
+
+        Install-ADDSForest `
+          -DomainName $DomainName `
+          -DomainNetbiosName $NetbiosName `
+          -SafeModeAdministratorPassword $SafeModePassword `
+          -InstallDns `
+          -CreateDnsDelegation:$false `
+          -DomainMode $DomainMode `
+          -ForestMode $ForestMode `
+          -NoRebootOnCompletion:$true `
+          -Force
+
+        shutdown.exe /r /t 10 /c "Rebooting after AD DS forest creation"
+        Write-Output "REBOOT_SCHEDULED=True"
+        Write-Output "CHANGED=True"
+      environment:
+        WINDOWS_AD_DSRM_PASSWORD: "{{ windows_ad_safe_mode_password }}"
+      register: _windows_ad_forest
+      changed_when: "'CHANGED=True' in _windows_ad_forest.stdout"
+      no_log: true
+
+    - name: Wait for WinRM to stop after forest creation
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ ansible_port | default(5985) }}"
+        state: stopped
+        delay: 5
+        timeout: "{{ windows_ad_reboot_stop_timeout | default(300) }}"
+      delegate_to: localhost
+      when: _windows_ad_forest.changed
+
+    - name: Wait for WinRM after forest creation
+      ansible.builtin.wait_for_connection:
+        delay: 60
+        timeout: "{{ windows_ad_reboot_timeout | default(2400) }}"
+      when: _windows_ad_forest.changed
+
+    - name: Set primary DC DNS client to AD DNS
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $DesiredDnsServers = @({{ _windows_ad_dns_client_servers | map('to_json') | join(', ') }})
+        $Changed = $false
+
+        $Interfaces = Get-NetIPInterface -AddressFamily IPv4 |
+          Where-Object {
+            $_.ConnectionState -eq "Connected" -and
+            $_.InterfaceAlias -notlike "Loopback*"
+          }
+
+        foreach ($Interface in $Interfaces) {
+          $CurrentDnsServers = @((Get-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -AddressFamily IPv4).ServerAddresses)
+          if (($CurrentDnsServers -join ",") -ne ($DesiredDnsServers -join ",")) {
+            Set-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -ServerAddresses $DesiredDnsServers
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_dns_client
+      changed_when: "'CHANGED=True' in _windows_ad_dns_client.stdout"
+
+    - name: Confirm AD forest
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        Import-Module ActiveDirectory
+        $Domain = Get-ADDomain
+        $Forest = Get-ADForest
+
+        if ($Domain.DNSRoot -ine "{{ windows_ad_domain_name }}") {
+          throw "Expected domain {{ windows_ad_domain_name }}, got $($Domain.DNSRoot)."
+        }
+
+        Write-Output "Domain=$($Domain.DNSRoot)"
+        Write-Output "NetBIOS=$($Domain.NetBIOSName)"
+        Write-Output "DomainMode=$($Domain.DomainMode)"
+        Write-Output "ForestMode=$($Forest.ForestMode)"
+        Write-Output "DnsRoot=$($Forest.RootDomain)"
+      changed_when: false

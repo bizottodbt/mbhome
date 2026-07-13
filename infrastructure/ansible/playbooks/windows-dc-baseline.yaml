@@ -11,6 +11,9 @@
     _windows_dc_gateway: "{{ windows_gateway | default('') }}"
     _windows_dc_disable_ipv6: "{{ windows_disable_ipv6 | default(true) | bool }}"
     _windows_dc_install_features: "{{ windows_dc_install_features | default(true) | bool }}"
+    _windows_dc_enable_rdp: "{{ windows_enable_rdp | default(true) | bool }}"
+    _windows_rdp_firewall_rule_name: "{{ windows_rdp_firewall_rule_name | default('mbhome Remote Desktop TCP 3389') }}"
+    _windows_disable_spice_agent: "{{ windows_disable_spice_agent | default(true) | bool }}"
     _windows_dc_features:
       - AD-Domain-Services
       - DNS
@@ -41,6 +44,109 @@
         include_management_tools: true
       register: _windows_dc_features_result
       when: _windows_dc_install_features
+
+    - name: Enable Remote Desktop
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $Changed = $false
+
+        $DenyTsConnectionsPath = "HKLM:\System\CurrentControlSet\Control\Terminal Server"
+        $DenyTsConnections = (Get-ItemProperty -Path $DenyTsConnectionsPath -Name fDenyTSConnections).fDenyTSConnections
+        if ($DenyTsConnections -ne 0) {
+          Set-ItemProperty -Path $DenyTsConnectionsPath -Name fDenyTSConnections -Value 0
+          $Changed = $true
+        }
+
+        $NlaPath = "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
+        $UserAuthentication = (Get-ItemProperty -Path $NlaPath -Name UserAuthentication).UserAuthentication
+        if ($UserAuthentication -ne 1) {
+          Set-ItemProperty -Path $NlaPath -Name UserAuthentication -Value 1
+          $Changed = $true
+        }
+
+        $SecurityLayer = (Get-ItemProperty -Path $NlaPath -Name SecurityLayer).SecurityLayer
+        if ($SecurityLayer -ne 2) {
+          Set-ItemProperty -Path $NlaPath -Name SecurityLayer -Value 2
+          $Changed = $true
+        }
+
+        netsh advfirewall firewall set rule group="Remote Desktop" new enable=Yes | Out-Null
+        $BuiltinFirewallRules = Get-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+        if ($BuiltinFirewallRules | Where-Object { $_.Enabled -ne "True" }) {
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          $Changed = $true
+        }
+
+        $RuleName = "{{ _windows_rdp_firewall_rule_name }}"
+        $ExplicitRule = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
+        if ($null -eq $ExplicitRule) {
+          New-NetFirewallRule `
+            -DisplayName $RuleName `
+            -Direction Inbound `
+            -Action Allow `
+            -Protocol TCP `
+            -LocalPort 3389 `
+            -Profile Any | Out-Null
+          $Changed = $true
+        } elseif ($ExplicitRule.Enabled -ne "True") {
+          Enable-NetFirewallRule -DisplayName $RuleName
+          $Changed = $true
+        }
+
+        Set-Service -Name UmRdpService -StartupType Manual -ErrorAction SilentlyContinue
+        Set-Service -Name TermService -StartupType Automatic
+        if ((Get-Service -Name TermService).Status -ne "Running") {
+          Start-Service -Name TermService
+          $Changed = $true
+        }
+
+        $Listener = Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue
+        if ($null -eq $Listener) {
+          $Service = Get-Service -Name TermService
+          throw "Remote Desktop was enabled, but TCP/3389 is not listening. TermService status: $($Service.Status)."
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_rdp
+      changed_when: "'CHANGED=True' in _windows_rdp.stdout"
+      when: _windows_dc_enable_rdp
+
+    - name: Disable SPICE guest agent services
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $Changed = $false
+
+        $Services = Get-Service |
+          Where-Object {
+            $_.Name -like "*spice*" -or
+            $_.DisplayName -like "*spice*"
+          }
+
+        foreach ($Service in $Services) {
+          if ($Service.Status -ne "Stopped") {
+            Stop-Service -Name $Service.Name -Force -ErrorAction SilentlyContinue
+            $Changed = $true
+          }
+
+          $WmiService = Get-CimInstance Win32_Service -Filter "Name='$($Service.Name)'"
+          if ($WmiService.StartMode -ne "Disabled") {
+            Set-Service -Name $Service.Name -StartupType Disabled
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_spice_agent
+      changed_when: "'CHANGED=True' in _windows_spice_agent.stdout"
+      when: _windows_disable_spice_agent
+
+    - name: Confirm Remote Desktop is reachable
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 3389
+        timeout: "{{ windows_rdp_wait_timeout | default(60) }}"
+      delegate_to: localhost
+      when: _windows_dc_enable_rdp
 
     - name: Set Windows hostname
       ansible.windows.win_hostname:
