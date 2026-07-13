@@ -1,0 +1,84 @@
+---
+# Copy to directory.local.yaml and fill in local directory state and passwords.
+# directory.local.yaml is gitignored.
+domain: ad.example
+base_dn: DC=ad,DC=example
+protect_ous_from_accidental_deletion: true
+service_accounts_path: OU=Service Accounts,OU=LAB,DC=ad,DC=example
+
+ous:
+  - name: LAB
+    path: DC=ad,DC=example
+    description: Homelab directory root
+
+  - name: Users
+    path: OU=LAB,DC=ad,DC=example
+
+  - name: Groups
+    path: OU=LAB,DC=ad,DC=example
+
+  - name: Service Accounts
+    path: OU=LAB,DC=ad,DC=example
+
+  - name: Computers
+    path: OU=LAB,DC=ad,DC=example
+
+groups:
+  - name: homelab-admins
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Administrators for homelab infrastructure
+
+  - name: linux-admins
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users allowed to administer Linux hosts via SSSD/sudo policy
+
+  - name: linux-users
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users allowed to sign in to Linux hosts
+
+  - name: windows-admins
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users allowed to administer Windows hosts
+
+  - name: windows-users
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users allowed to sign in to Windows hosts
+
+users:
+  - username: admin_example
+    display_name: Admin Example
+    given_name: Admin
+    surname: Example
+    upn: admin_example@ad.example
+    email: admin_example@ad.example
+    path: OU=Users,OU=LAB,DC=ad,DC=example
+    groups:
+      - homelab-admins
+      - linux-admins
+      - linux-users
+      - windows-admins
+      - windows-users
+    enabled: true
+    password: CHANGE_ME_INITIAL_PASSWORD
+    must_change_password: false
+    password_never_expires: true
+
+service_accounts:
+  - username: svc_example
+    display_name: Example Service Account
+    description: Example non-interactive service identity
+    path: OU=Service Accounts,OU=LAB,DC=ad,DC=example
+    groups:
+      - linux-users
+    enabled: true
+    password: CHANGE_ME_SERVICE_ACCOUNT_PASSWORD

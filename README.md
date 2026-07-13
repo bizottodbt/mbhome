@@ -1011,6 +1011,40 @@ Expected shape:
 - Windows Time reports a sane source; configure the PDC emulator time source
   before joining many clients
 
+AD users, groups, and OUs can be managed declaratively with local desired-state
+file:
+
+```text
+infrastructure/ad/directory.local.yaml
+```
+
+The real file is gitignored. It contains the desired directory shape such as
+OUs, groups, users, service accounts, group memberships, and initial passwords.
+Service accounts are declared separately for readability, but they are
+reconciled as AD user objects. Start from the example:
+
+```bash
+cp infrastructure/ad/directory.local.example.yaml \
+  infrastructure/ad/directory.local.yaml
+```
+
+Preview directory changes:
+
+```bash
+make windows-ad-directory-check
+```
+
+Apply directory changes:
+
+```bash
+make windows-ad-directory-apply
+```
+
+The reconciler creates missing OUs, groups, users, service accounts, and
+declared memberships. It does not delete unmanaged AD objects, which keeps early
+homelab iteration safer. Enabled new users and service accounts must include a
+`password` in `directory.local.yaml` so they can be created.
+
 Terraform should stop at VM lifecycle, placement, and basic hardware. Domain
 creation, replication, DNS, time sync, and promotion/demotion are better
 handled after boot with PowerShell DSC or Ansible Windows modules over WinRM.
