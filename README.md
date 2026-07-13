@@ -990,6 +990,27 @@ windows_ad_connection_user: Administrator@ad.example.test
 windows_ad_connection_password: CHANGE_ME_DOMAIN_ADMIN
 ```
 
+Validate the domain from either DC after replica promotion:
+
+```powershell
+dcdiag /v
+repadmin /replsummary
+repadmin /showrepl
+Get-ADDomainController -Filter * |
+  Select-Object HostName,Site,IsGlobalCatalog,IPv4Address
+Get-DnsServerZone
+w32tm /query /status
+```
+
+Expected shape:
+
+- both `mbhome-ad-01` and `mbhome-ad-02` appear as domain controllers
+- both DCs are Global Catalog servers
+- `repadmin /replsummary` shows no failed replication
+- DNS zones include the AD-integrated domain zone and `_msdcs` zone
+- Windows Time reports a sane source; configure the PDC emulator time source
+  before joining many clients
+
 Terraform should stop at VM lifecycle, placement, and basic hardware. Domain
 creation, replication, DNS, time sync, and promotion/demotion are better
 handled after boot with PowerShell DSC or Ansible Windows modules over WinRM.
