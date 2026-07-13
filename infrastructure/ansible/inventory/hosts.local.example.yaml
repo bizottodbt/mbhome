@@ -67,7 +67,6 @@ all:
             content:
               - images
               - rootdir
-            options: vers=4.2
 
           - storage: proxmox-isos
             server: 192.0.2.48
@@ -75,21 +74,18 @@ all:
             content:
               - iso
               - vztmpl
-            options: vers=4.2
 
           - storage: proxmox-snippets
             server: 192.0.2.48
             export: /mnt/user/proxmox-snippets
             content:
               - snippets
-            options: vers=4.2
 
           - storage: proxmox-backup
             server: 192.0.2.48
             export: /mnt/user/proxmox-backup
             content:
               - backup
-            options: vers=4.2
         proxmox_10gbe_mtu: 1500
         proxmox_storage_content:
           - storage: local
@@ -111,20 +107,7 @@ all:
             dhcp4: true
             link_local: false
             ipv6_accept_ra: false
-        proxmox_nfs_server: 192.0.2.48
-        proxmox_nfs_mounts:
-          - path: /mnt/proxmox-vms
-            src: /mnt/user/proxmox-vms
-            enabled: true
-          - path: /mnt/proxmox-backup
-            src: /mnt/user/proxmox-backup
-            enabled: true
-          - path: /mnt/proxmox-snippets
-            src: /mnt/user/proxmox-snippets
-            enabled: true
-          - path: /mnt/proxmox-isos
-            src: /mnt/user/proxmox-isos
-            enabled: true
+        proxmox_nfs_mounts: []
       hosts:
         mbhome-proxmox-01:
           ansible_host: 192.0.2.51

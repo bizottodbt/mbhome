@@ -225,20 +225,44 @@
         - inventory_hostname == _proxmox_cluster_primary
         - proxmox_cluster_migration is defined
 
-    - name: Check Proxmox cluster NFS storage definitions
+    - name: Read Proxmox cluster NFS storage configs
       ansible.builtin.command:
         argv:
-          - pvesm
-          - status
-          - --storage
-          - "{{ item.storage }}"
-      register: _proxmox_cluster_nfs_storage_status
+          - pvesh
+          - get
+          - "/storage/{{ item.storage }}"
+          - --output-format
+          - json
+      register: _proxmox_cluster_nfs_storage_configs
       changed_when: false
       failed_when: false
       loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
       when: inventory_hostname == _proxmox_cluster_primary
 
-    - name: Add missing Proxmox cluster NFS storages
+    - name: Recreate Proxmox cluster NFS storages with immutable drift
+      ansible.builtin.command:
+        argv:
+          - pvesm
+          - remove
+          - "{{ item.item.storage }}"
+      changed_when: true
+      loop: "{{ _proxmox_cluster_nfs_storage_configs.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - item.rc == 0
+        - >-
+          (((item.stdout | default('{}', true)) | from_json).server | default('')) != (item.item.server | string) or
+          (((item.stdout | default('{}', true)) | from_json).export | default('')) != (item.item.export | string) or
+          (
+            item.item.options is defined and
+            (((item.stdout | default('{}', true)) | from_json).options | default('')) != (item.item.options | string)
+          ) or
+          (
+            item.item.options is not defined and
+            (((item.stdout | default('{}', true)) | from_json).options | default('')) | length > 0
+          )
+
+    - name: Add missing or recreated Proxmox cluster NFS storages
       ansible.builtin.command:
         argv: >-
           {{
@@ -258,10 +282,21 @@
             + (['--nodes', item.item.nodes | join(',')] if item.item.nodes is defined else [])
           }}
       changed_when: true
-      loop: "{{ _proxmox_cluster_nfs_storage_status.results | default([]) }}"
+      loop: "{{ _proxmox_cluster_nfs_storage_configs.results | default([]) }}"
       when:
         - inventory_hostname == _proxmox_cluster_primary
-        - item.rc != 0
+        - >-
+          item.rc != 0 or
+          (((item.stdout | default('{}', true)) | from_json).server | default('')) != (item.item.server | string) or
+          (((item.stdout | default('{}', true)) | from_json).export | default('')) != (item.item.export | string) or
+          (
+            item.item.options is defined and
+            (((item.stdout | default('{}', true)) | from_json).options | default('')) != (item.item.options | string)
+          ) or
+          (
+            item.item.options is not defined and
+            (((item.stdout | default('{}', true)) | from_json).options | default('')) | length > 0
+          )
 
     - name: Align Proxmox cluster NFS storage content and options
       ansible.builtin.command:
@@ -280,6 +315,167 @@
       changed_when: false
       loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
       when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Read Proxmox cluster NFS storage configs after alignment
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - get
+          - "/storage/{{ item.storage }}"
+          - --output-format
+          - json
+      register: _proxmox_cluster_nfs_storage_configs_after_alignment
+      changed_when: false
+      loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Assert Proxmox cluster NFS storage configs use desired sources
+      ansible.builtin.assert:
+        that:
+          - "(((item.stdout | default('{}', true)) | from_json).server | default('')) == (item.item.server | string)"
+          - "(((item.stdout | default('{}', true)) | from_json).export | default('')) == (item.item.export | string)"
+        fail_msg: >-
+          Proxmox storage {{ item.item.storage }} config does not match desired
+          source {{ item.item.server }}:{{ item.item.export }}.
+          Current config:
+          {{ item.stdout | default('') }}
+      loop: "{{ _proxmox_cluster_nfs_storage_configs_after_alignment.results | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Check mounted Proxmox cluster NFS storage sources
+      ansible.builtin.command:
+        argv:
+          - findmnt
+          - --list
+          - -n
+          - -t
+          - nfs,nfs4
+          - -o
+          - SOURCE
+          - --mountpoint
+          - "/mnt/pve/{{ item.storage }}"
+      register: _proxmox_cluster_nfs_mount_sources
+      changed_when: false
+      failed_when: false
+      loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
+
+    - name: Disable Proxmox cluster NFS storages with stale mounts before remount
+      ansible.builtin.command:
+        argv:
+          - pvesm
+          - set
+          - "{{ item.item.storage }}"
+          - --disable
+          - "1"
+      changed_when: true
+      loop: "{{ _proxmox_cluster_nfs_mount_sources.results | default([]) }}"
+      when:
+        - item.rc == 0
+        - >-
+          (item.stdout_lines | default([])) !=
+          [((item.item.server | string) ~ ':' ~ (item.item.export | string))]
+
+    - name: Stop Proxmox storage status daemon before stale NFS unmounts
+      ansible.builtin.systemd:
+        name: pvestatd
+        state: stopped
+      when: >-
+        _proxmox_cluster_nfs_mount_sources.results | default([])
+        | selectattr('rc', 'eq', 0)
+        | list
+        | length > 0
+
+    - name: Unmount Proxmox cluster NFS storage mounts before remount
+      ansible.builtin.shell: |
+        set -eu
+        target="/mnt/pve/{{ item.item.storage }}"
+
+        while findmnt --list -n -t nfs,nfs4 -o SOURCE --mountpoint "$target" >/dev/null; do
+          umount "$target"
+        done
+      register: _proxmox_cluster_nfs_stale_unmounts
+      changed_when: true
+      failed_when: false
+      loop: "{{ _proxmox_cluster_nfs_mount_sources.results | default([]) }}"
+      when:
+        - item.rc == 0
+        - >-
+          (item.stdout_lines | default([])) !=
+          [((item.item.server | string) ~ ':' ~ (item.item.export | string))]
+
+    - name: Re-enable Proxmox cluster NFS storages after stale remount handling
+      ansible.builtin.command:
+        argv:
+          - pvesm
+          - set
+          - "{{ item.storage }}"
+          - --disable
+          - "0"
+      changed_when: true
+      loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
+      when: _proxmox_cluster_nfs_stale_unmounts is changed
+
+    - name: Start Proxmox storage status daemon after stale NFS unmounts
+      ansible.builtin.systemd:
+        name: pvestatd
+        state: started
+      when: >-
+        _proxmox_cluster_nfs_mount_sources.results | default([])
+        | selectattr('rc', 'eq', 0)
+        | list
+        | length > 0
+
+    - name: Assert stale Proxmox cluster NFS unmounts succeeded
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+        fail_msg: >-
+          Could not unmount stale Proxmox storage {{ item.item.item.storage | default(item.item.storage | default('unknown')) }}
+          from /mnt/pve/{{ item.item.item.storage | default(item.item.storage | default('unknown')) }}. It may still be in use by
+          a VM, ISO, backup job, shell, or pvedaemon task. Stop users of the
+          storage and rerun proxmox-cluster.
+          stderr: {{ item.stderr | default('') }}
+      loop: "{{ _proxmox_cluster_nfs_stale_unmounts.results | default([]) }}"
+      when:
+        - _proxmox_cluster_nfs_stale_unmounts is defined
+        - not (item.skipped | default(false))
+
+    - name: Activate/check Proxmox cluster NFS storages
+      ansible.builtin.command:
+        argv:
+          - pvesm
+          - status
+          - --storage
+          - "{{ item.storage }}"
+      changed_when: false
+      loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
+
+    - name: Confirm Proxmox cluster NFS storage mounts use desired sources
+      ansible.builtin.command:
+        argv:
+          - findmnt
+          - --list
+          - -n
+          - -t
+          - nfs,nfs4
+          - -o
+          - SOURCE
+          - --mountpoint
+          - "/mnt/pve/{{ item.storage }}"
+      register: _proxmox_cluster_nfs_mount_sources_after
+      changed_when: false
+      loop: "{{ proxmox_cluster_nfs_storages | default([]) }}"
+
+    - name: Assert Proxmox cluster NFS storage mounts use desired sources
+      ansible.builtin.assert:
+        that:
+          - "item.stdout_lines | default([]) | length == 1"
+          - "item.stdout_lines[0] == ((item.item.server | string) ~ ':' ~ (item.item.export | string))"
+        fail_msg: >-
+          Proxmox storage {{ item.item.storage }} is mounted from sources
+          {{ item.stdout_lines | default([]) }}, expected only
+          {{ item.item.server }}:{{ item.item.export }}.
+      loop: "{{ _proxmox_cluster_nfs_mount_sources_after.results | default([]) }}"
 
     - name: Ensure Proxmox API users exist on the cluster
       ansible.builtin.command:

@@ -18,10 +18,17 @@ ANSIBLE_INVENTORY_ROOT  := -i $(ANSIBLE_DIR)/inventory/hosts.yaml $(if $(wildcar
 ANSIBLE_INVENTORY       := -i inventory/hosts.yaml $(ANSIBLE_INVENTORY_LOCAL)
 
 DIB_BASE := infrastructure/dib
+PROXMOX_TF_SHARED_DIR := infrastructure/terraform
+PROXMOX_TF_SHARED_VARS := $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.tfvars),-var-file=../proxmox.shared.tfvars,) $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.local.tfvars),-var-file=../proxmox.shared.local.tfvars,)
 PROXMOX_SMOKE_TF_DIR := infrastructure/terraform/proxmox-smoke-vm
-PROXMOX_SMOKE_TF_VARS := $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
+PROXMOX_SMOKE_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
+PROXMOX_AD_TF_DIR := infrastructure/terraform/proxmox-ad-vms
+PROXMOX_AD_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_AD_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_AD_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
+PROXMOX_WINDOWS_PACKER_DIR := infrastructure/packer/proxmox-windows-server
+PROXMOX_WINDOWS_PACKER_SHARED_VARS := $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.pkrvars.hcl),-var-file=../../terraform/proxmox.shared.pkrvars.hcl,) $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.local.pkrvars.hcl),-var-file=../../terraform/proxmox.shared.local.pkrvars.hcl,)
+PROXMOX_WINDOWS_PACKER_VARS := $(PROXMOX_WINDOWS_PACKER_SHARED_VARS) $(if $(wildcard $(PROXMOX_WINDOWS_PACKER_DIR)/packer.pkrvars.hcl),-var-file=packer.pkrvars.hcl,) $(if $(wildcard $(PROXMOX_WINDOWS_PACKER_DIR)/packer.local.pkrvars.hcl),-var-file=packer.local.pkrvars.hcl,)
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -133,6 +140,30 @@ proxmox-smoke-vm-apply: ## Create/update the disposable Proxmox smoke VM
 
 proxmox-smoke-vm-destroy: ## Destroy the disposable Proxmox smoke VM
 	cd $(PROXMOX_SMOKE_TF_DIR) && terraform destroy $(PROXMOX_SMOKE_TF_VARS)
+
+proxmox-ad-vms-init: ## Initialize Terraform for AD/domain-controller VM shells
+	cd $(PROXMOX_AD_TF_DIR) && terraform init
+
+proxmox-ad-vms-plan: ## Plan AD/domain-controller VM shells
+	cd $(PROXMOX_AD_TF_DIR) && terraform plan $(PROXMOX_AD_TF_VARS)
+
+proxmox-ad-vms-apply: ## Create/update AD/domain-controller VM shells
+	cd $(PROXMOX_AD_TF_DIR) && terraform apply $(PROXMOX_AD_TF_VARS)
+
+proxmox-ad-vms-destroy: ## Destroy AD/domain-controller VM shells
+	cd $(PROXMOX_AD_TF_DIR) && terraform destroy $(PROXMOX_AD_TF_VARS)
+
+proxmox-windows-template-init: ## Initialize Packer for the Windows Server Proxmox template
+	cd $(PROXMOX_WINDOWS_PACKER_DIR) && packer init .
+
+proxmox-windows-template-answer-iso: ## Generate the local Autounattend ISO used by the Windows Server Packer build
+	cd $(PROXMOX_WINDOWS_PACKER_DIR) && ./render-autounattend-iso.sh ../../terraform/proxmox.shared.local.pkrvars.hcl packer.local.pkrvars.hcl
+
+proxmox-windows-template-validate: proxmox-windows-template-answer-iso ## Validate the Windows Server Packer template
+	cd $(PROXMOX_WINDOWS_PACKER_DIR) && packer validate $(PROXMOX_WINDOWS_PACKER_VARS) .
+
+proxmox-windows-template-build: proxmox-windows-template-answer-iso ## Build a Windows Server Proxmox template with Packer
+	cd $(PROXMOX_WINDOWS_PACKER_DIR) && packer build $(PROXMOX_WINDOWS_PACKER_VARS) .
 
 bmc-baseline: ## Configure BMC users and board-specific settings (usage: make bmc-baseline LIMIT=mbhome-proxmox-01-bmc)
 	cd $(ANSIBLE_DIR) && ansible-playbook $(ANSIBLE_INVENTORY) playbooks/bmc-baseline.yaml $(if $(LIMIT),--limit $(LIMIT),)

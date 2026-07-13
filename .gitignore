@@ -36,6 +36,11 @@ infrastructure/kolla-ansible/config/ironic/ironic-agent*.initramfs
 *.tfvars
 !*.example.tfvars
 
+# Packer local overrides
+*.pkrvars.hcl
+!*.example.pkrvars.hcl
+infrastructure/packer/proxmox-windows-server/generated/
+
 # kubeconfig fragments
 *.kubeconfig
 

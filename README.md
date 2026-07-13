@@ -494,13 +494,17 @@ inventory, so post-deploy configuration uses the same per-node variables. It
 does not run the BMC baseline; run `make bmc-baseline LIMIT=<node-bmc>` before
 registering the node in OpenStack.
 
-NFS mounts are controlled by the `proxmox_nfs_mounts` list in
+Direct NFS mounts are controlled by the `proxmox_nfs_mounts` list in
 `infrastructure/ansible/inventory/hosts.local.yaml`; use
 [`infrastructure/ansible/inventory/hosts.local.example.yaml`](infrastructure/ansible/inventory/hosts.local.example.yaml)
 as the committed reference.
 If an Unraid share does not exist yet, keep that mount with `enabled: false`.
 When the share is created and exported from Unraid, flip it to `enabled: true`
 and rerun the baseline.
+
+After Proxmox cluster NFS storages are registered, prefer
+`proxmox_nfs_mounts: []` and use Proxmox's own `/mnt/pve/<storage-id>` paths
+for testing. This keeps Proxmox as the only NFS client owner for VM storage.
 
 The baseline also aligns Proxmox storage content types. By default, `local` is
 allowed to store backups, ISOs, snippets, container templates, VM disks,
@@ -675,7 +679,6 @@ proxmox_cluster_nfs_storages:
     export: /mnt/user/proxmox-vms
     content:
       - images
-    options: vers=4.2
 ```
 
 After changing storage definitions, rerun:
@@ -683,6 +686,10 @@ After changing storage definitions, rerun:
 ```bash
 make proxmox-cluster LIMIT='mbhome-proxmox-01:mbhome-proxmox-02'
 ```
+
+The playbook recreates the Proxmox storage definition when immutable NFS fields
+such as `server` or `export` drift from inventory. This removes/re-adds the
+cluster storage entry but does not delete files from Unraid.
 
 Verify from either node:
 
@@ -745,19 +752,26 @@ terraform version
 Create the local vars file:
 
 ```bash
+cp infrastructure/terraform/proxmox.shared.example.tfvars \
+  infrastructure/terraform/proxmox.shared.local.tfvars
+
 cp infrastructure/terraform/proxmox-smoke-vm/terraform.example.tfvars \
   infrastructure/terraform/proxmox-smoke-vm/terraform.local.tfvars
 ```
 
-Edit `terraform.local.tfvars`:
+Edit `proxmox.shared.local.tfvars` for values shared by all Proxmox Terraform
+stacks:
 
 - `proxmox_api_url`: any clustered Proxmox node UI/API URL
 - `proxmox_api_token`: token in `user@realm!tokenid=secret` format
 - `proxmox_ssh_username`: SSH user for host-side disk import operations, usually `root` in this lab
+- `vm_network_bridge`: usually `vmbr0`
+
+Edit `proxmox-smoke-vm/terraform.local.tfvars` for the smoke VM values:
+
 - `proxmox_node`: the Proxmox node that should create the VM
 - `vm_datastore_id`: start with `local`; use `proxmox-vms` for live migration
 - `cloud_init_datastore_id`: use the same shared datastore as the VM disk for live migration
-- `vm_network_bridge`: usually `vmbr0`
 
 The Proxmox API token and provider SSH access are separate. The `terraform@pve`
 API user does not need SSH access. The BPG provider still uses SSH for some
@@ -796,6 +810,129 @@ Destroy it when done:
 ```bash
 make proxmox-smoke-vm-destroy
 ```
+
+### Build a Windows Server template with Packer
+
+The Windows Server Packer stack builds a reusable Proxmox template from a
+Windows Server ISO. It uses the same shared Proxmox API vars as the Terraform
+stacks, plus a local Packer vars file for Windows-specific settings.
+
+Create the local vars files:
+
+```bash
+cp infrastructure/terraform/proxmox.shared.example.pkrvars.hcl \
+  infrastructure/terraform/proxmox.shared.local.pkrvars.hcl
+
+cp infrastructure/packer/proxmox-windows-server/packer.example.pkrvars.hcl \
+  infrastructure/packer/proxmox-windows-server/packer.local.pkrvars.hcl
+```
+
+Packer requires var files to end in `.hcl` or `.json`, so the shared Packer
+file is separate from `proxmox.shared.local.tfvars` even though most values are
+the same.
+
+Edit `packer.local.pkrvars.hcl`:
+
+- `proxmox_node`: node where the temporary build VM should run
+- `windows_iso_file_id`: Proxmox file ID for the Windows Server installer ISO
+- `windows_image_name`: exact edition name inside the ISO
+- `windows_admin_password`: temporary Administrator password used by Packer
+- `template_vm_id` / `template_name`: final Proxmox template identity
+
+If you are unsure about `windows_image_name`, list the ISO editions from a
+Windows machine:
+
+```powershell
+dism /Get-WimInfo /WimFile:D:\sources\install.wim
+```
+
+Then build the template:
+
+```bash
+make proxmox-windows-template-init
+make proxmox-windows-template-validate
+make proxmox-windows-template-build
+```
+
+The validate/build targets generate an ignored local answer ISO at
+`infrastructure/packer/proxmox-windows-server/generated/Autounattend.iso`.
+That generated directory contains the rendered Administrator password, so it
+must stay out of git.
+
+The build uses `Autounattend.xml` to install Windows, enables WinRM, connects
+once, runs the configured guest-tool/template preparation scripts, runs
+Sysprep, and converts the VM into a Proxmox template. For Terraform-created
+clones to receive hostnames and IP settings automatically, build the template
+with Cloudbase-Init enabled:
+
+```hcl
+enable_cloudbase_init = true
+```
+
+### Create Microsoft AD DS VMs
+
+The AD VM Terraform stack creates two long-lived Windows Server VMs by cloning
+the Packer-built Windows Server template. It intentionally enforces placement
+on different Proxmox nodes and uses the shared `proxmox-vms` datastore.
+
+Build the Windows Server template first. The template must include
+Cloudbase-Init if Terraform should set the Windows hostnames and static IP
+configuration on first boot. Terraform passes both metadata and a small
+PowerShell user-data script that configures IPv4, renames Windows, and reboots
+once when needed. Cloudbase-Init runs these first-boot steps only once, so
+rebuild/recreate clones after changing template Cloudbase-Init settings or
+Terraform user-data.
+
+Create the local vars file:
+
+```bash
+cp infrastructure/terraform/proxmox.shared.example.tfvars \
+  infrastructure/terraform/proxmox.shared.local.tfvars
+
+cp infrastructure/terraform/proxmox-ad-vms/terraform.example.tfvars \
+  infrastructure/terraform/proxmox-ad-vms/terraform.local.tfvars
+```
+
+Edit `proxmox.shared.local.tfvars` for values shared by all Proxmox Terraform
+stacks:
+
+- `proxmox_api_url`: any clustered Proxmox node UI/API URL
+- `proxmox_api_token`: token in `user@realm!tokenid=secret` format
+- `vm_network_bridge`: usually `vmbr0`
+
+Edit `proxmox-ad-vms/terraform.local.tfvars` for AD-specific values:
+
+- `template_vm_id`: VMID of the Packer-built Windows Server template
+- `template_node_name`: Proxmox node that currently owns the template
+- `ad_vms.*.node_name`: keep the two VMs on different Proxmox nodes
+- `ad_vms.*.hostname`: Windows hostname to pass through Cloudbase-Init
+- `ad_vms.*.ipv4_address`: desired stable addresses to pass through Cloudbase-Init
+- `vm_datastore_id`: keep on shared storage, usually `proxmox-vms`
+- `snippet_datastore_id`: snippets-capable storage for generated metadata, usually `proxmox-snippets`
+
+Then create the VMs:
+
+```bash
+make proxmox-ad-vms-init
+make proxmox-ad-vms-plan
+make proxmox-ad-vms-apply
+```
+
+The stack creates full clones by default, because domain controllers are
+long-lived infrastructure and should not depend on linked-clone parent disk
+state. To confirm clone hardware and Cloudbase-Init metadata:
+
+```bash
+qm config 9201 | grep -E '^(name|boot|sata0|ide2|agent|net0|ostype):'
+qm config 9202 | grep -E '^(name|boot|sata0|ide2|agent|net0|ostype):'
+```
+
+Terraform should stop at VM lifecycle, placement, hostname/IP metadata, and
+basic hardware. Domain creation, replication, DNS, time sync, and
+promotion/demotion are better handled after boot with PowerShell DSC or Ansible
+Windows modules over WinRM.
+
+This keeps Terraform from owning fragile, stateful domain-controller operations.
 
 ---
 

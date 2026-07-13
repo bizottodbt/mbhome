@@ -109,4 +109,4 @@ BMC UI > Settings > Fan Profile > Import
 Many users reported that SYS_FANs headers are not controllable, even tough you have the correct profile, so in my setup, I chose to chain 3 fans to the CPU header.
 
 ## BMC Firmware
-The latest firmware available for AST2500 is currently [12.61.39](https://www.gigabyte.com/de/Enterprise/Server-Motherboard/MC12-LE0-rev-1x#Support-Firmware). Update can be done via BMC UI, some users reported BMC UI not to be accesible after updating and turning on Firewall settings. No problem to update for me.
+The latest firmware available for AST2500 is currently [12.61.39](https://www.gigabyte.com/de/Enterprise/Server-Motherboard/MC12-LE0-rev-1x#Support-Firmware). Update can be done via BMC UI by uploading the `rom.ima_enc` file under `<VERSION>/fw/` directory into the BMC UI `Maintenance > Firmware Update > Select Firmware Image`, some users reported BMC UI not to be accesible after updating and turning on Firewall settings. No problem to update for me.
