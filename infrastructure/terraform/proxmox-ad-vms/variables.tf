@@ -96,7 +96,7 @@ variable "vm_network_model" {
 variable "vm_agent_enabled" {
   description = "Enable the Proxmox QEMU guest agent flag. Enable only when the Packer template includes QEMU guest tools."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "template_vm_id" {

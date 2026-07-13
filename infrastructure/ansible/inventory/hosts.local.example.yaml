@@ -131,3 +131,28 @@ all:
           ansible_host: 192.0.2.53
           bmc_inventory_host: mbhome-proxmox-03-bmc
           proxmox_10gbe_links: []
+
+    windows_domain_controllers:
+      vars:
+        ansible_connection: winrm
+        ansible_user: Administrator
+        ansible_password: CHANGE_ME_WINDOWS_ADMIN
+        ansible_port: 5985
+        ansible_winrm_scheme: http
+        ansible_winrm_transport: ntlm
+        windows_prefix_length: 24
+        windows_gateway: 192.0.2.1
+        windows_disable_ipv6: true
+        windows_dc_install_features: true
+        windows_dns_servers:
+          - 192.0.2.1
+      hosts:
+        mbhome-ad-01:
+          ansible_host: 192.0.2.61
+          windows_hostname: mbhome-ad-01
+          windows_static_ip: 192.0.2.61
+
+        mbhome-ad-02:
+          ansible_host: 192.0.2.62
+          windows_hostname: mbhome-ad-02
+          windows_static_ip: 192.0.2.62

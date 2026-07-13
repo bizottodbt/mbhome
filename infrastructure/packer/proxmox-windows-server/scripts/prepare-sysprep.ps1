@@ -29,13 +29,16 @@ wevtutil el | ForEach-Object {
 }
 
 $sysprep = "$env:SystemRoot\System32\Sysprep\Sysprep.exe"
-$arguments = "/generalize /oobe /quit /quiet"
+$arguments = "/generalize /oobe /quit /quiet /mode:vm"
+$packerUnattend = "C:\Windows\Panther\SysprepUnattend.xml"
 
 if ($env:ENABLE_CLOUDBASE_INIT -eq "true") {
     $cloudbaseUnattend = "C:\Program Files\Cloudbase Solutions\Cloudbase-Init\conf\Unattend.xml"
     if (Test-Path $cloudbaseUnattend) {
         $arguments = "$arguments /unattend:`"$cloudbaseUnattend`""
     }
+} elseif (Test-Path $packerUnattend) {
+    $arguments = "$arguments /unattend:`"$packerUnattend`""
 }
 
 Write-Host "Starting Sysprep with arguments: $arguments"

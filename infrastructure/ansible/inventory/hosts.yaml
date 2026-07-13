@@ -63,6 +63,11 @@ all:
         # mbhome-proxmox-03:
         #   proxmox_10gbe_links: []
 
+    windows_domain_controllers:
+      hosts:
+        mbhome-ad-01: {}
+        mbhome-ad-02: {}
+
     k3s_control_plane:
       hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)
 

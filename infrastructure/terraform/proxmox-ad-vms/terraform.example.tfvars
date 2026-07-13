@@ -10,7 +10,7 @@ vm_machine              = "q35"
 vm_disk_interface       = "sata0"
 vm_disk_format          = "qcow2"
 vm_network_model        = "e1000"
-vm_agent_enabled        = false
+vm_agent_enabled        = true
 dns_domain              = "ad.example.test"
 dns_servers             = []
 

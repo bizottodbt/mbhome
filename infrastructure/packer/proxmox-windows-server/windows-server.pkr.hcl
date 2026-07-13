@@ -134,6 +134,11 @@ build {
     ]
   }
 
+  provisioner "file" {
+    source      = "${path.root}/generated/SysprepUnattend.xml"
+    destination = "C:/Windows/Panther/SysprepUnattend.xml"
+  }
+
   provisioner "powershell" {
     environment_vars = [
       "DISABLE_INSECURE_WINRM_AFTER_BUILD=${var.disable_insecure_winrm_after_build}",

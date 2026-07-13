@@ -1,0 +1,155 @@
+---
+- name: Configure Windows domain controller VM basics
+  hosts: windows_domain_controllers
+  gather_facts: false
+  serial: 1
+
+  vars:
+    _windows_dc_hostname: "{{ windows_hostname | default(inventory_hostname.split('.')[0]) }}"
+    _windows_dc_dns_servers: "{{ windows_dns_servers | default([]) }}"
+    _windows_dc_interface_alias: "{{ windows_interface_alias | default('') }}"
+    _windows_dc_gateway: "{{ windows_gateway | default('') }}"
+    _windows_dc_disable_ipv6: "{{ windows_disable_ipv6 | default(true) | bool }}"
+    _windows_dc_install_features: "{{ windows_dc_install_features | default(true) | bool }}"
+    _windows_dc_features:
+      - AD-Domain-Services
+      - DNS
+      - RSAT-ADDS
+      - RSAT-DNS-Server
+
+  tasks:
+    - name: Validate Windows DC network variables
+      ansible.builtin.assert:
+        that:
+          - windows_static_ip is defined
+          - windows_static_ip | length > 0
+          - windows_prefix_length is defined
+          - windows_prefix_length | int > 0
+          - windows_prefix_length | int <= 32
+        fail_msg: >-
+          Set windows_static_ip and windows_prefix_length for each Windows DC
+          host in inventory/hosts.local.yaml.
+
+    - name: Wait for WinRM
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ windows_wait_timeout | default(600) }}"
+
+    - name: Install AD DS and DNS prerequisites
+      ansible.windows.win_feature:
+        name: "{{ windows_dc_features | default(_windows_dc_features) }}"
+        state: present
+        include_management_tools: true
+      register: _windows_dc_features_result
+      when: _windows_dc_install_features
+
+    - name: Set Windows hostname
+      ansible.windows.win_hostname:
+        name: "{{ _windows_dc_hostname }}"
+      register: _windows_hostname
+
+    - name: Configure static IPv4 and DNS
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+
+        $DesiredAddress = "{{ windows_static_ip }}"
+        $DesiredPrefix = {{ windows_prefix_length | int }}
+        $DesiredGateway = "{{ _windows_dc_gateway }}"
+        $InterfaceAlias = "{{ _windows_dc_interface_alias }}"
+        $DisableIpv6 = "{{ _windows_dc_disable_ipv6 | ternary('true', 'false') }}"
+        $RebootAfterNetwork = "{{ (_windows_hostname.reboot_required | default(false) | bool or _windows_dc_features_result.reboot_required | default(false) | bool) | ternary('true', 'false') }}"
+        $DesiredDnsServersJson = @'
+        {{ _windows_dc_dns_servers | to_json }}
+        '@
+
+        $DesiredDnsServers = @()
+        $ParsedDnsServers = ConvertFrom-Json -InputObject $DesiredDnsServersJson
+        if ($null -ne $ParsedDnsServers) {
+          $DesiredDnsServers = @($ParsedDnsServers)
+        }
+
+        if ([string]::IsNullOrWhiteSpace($InterfaceAlias)) {
+          $Interface = Get-NetIPInterface -AddressFamily IPv4 |
+            Where-Object {
+              $_.ConnectionState -eq "Connected" -and
+              $_.InterfaceAlias -notlike "Loopback*"
+            } |
+            Sort-Object -Property InterfaceMetric, InterfaceAlias |
+            Select-Object -First 1
+
+          if ($null -eq $Interface) {
+            throw "No connected IPv4 interface was found. Set windows_interface_alias for this host."
+          }
+
+          $InterfaceAlias = $Interface.InterfaceAlias
+        }
+
+        $Changed = $false
+
+        $CurrentAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+          Where-Object {
+            $_.IPAddress -eq $DesiredAddress -and
+            $_.PrefixLength -eq $DesiredPrefix
+          } |
+          Select-Object -First 1
+
+        if ($null -eq $CurrentAddress) {
+          New-NetIPAddress -InterfaceAlias $InterfaceAlias -IPAddress $DesiredAddress -PrefixLength $DesiredPrefix | Out-Null
+          $Changed = $true
+        }
+
+        $OtherAddresses = Get-NetIPAddress -InterfaceAlias $InterfaceAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+          Where-Object {
+            $_.IPAddress -ne $DesiredAddress -and
+            $_.PrefixOrigin -ne "WellKnown"
+          }
+
+        foreach ($Address in $OtherAddresses) {
+          Remove-NetIPAddress -InterfaceAlias $InterfaceAlias -IPAddress $Address.IPAddress -Confirm:$false -ErrorAction SilentlyContinue
+          $Changed = $true
+        }
+
+        $DhcpInterface = Get-NetIPInterface -InterfaceAlias $InterfaceAlias -AddressFamily IPv4
+        if ($DhcpInterface.Dhcp -ne "Disabled") {
+          Set-NetIPInterface -InterfaceAlias $InterfaceAlias -AddressFamily IPv4 -Dhcp Disabled
+          $Changed = $true
+        }
+
+        $CurrentDefaultRoutes = @(Get-NetRoute -InterfaceAlias $InterfaceAlias -AddressFamily IPv4 -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue)
+        if (-not [string]::IsNullOrWhiteSpace($DesiredGateway)) {
+          $DesiredDefaultRoute = $CurrentDefaultRoutes |
+            Where-Object { $_.NextHop -eq $DesiredGateway } |
+            Select-Object -First 1
+
+          if ($null -eq $DesiredDefaultRoute -or $CurrentDefaultRoutes.Count -gt 1) {
+            $CurrentDefaultRoutes | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+            New-NetRoute -InterfaceAlias $InterfaceAlias -DestinationPrefix "0.0.0.0/0" -NextHop $DesiredGateway | Out-Null
+            $Changed = $true
+          }
+        }
+
+        if ($DesiredDnsServers.Count -gt 0) {
+          $CurrentDnsServers = @((Get-DnsClientServerAddress -InterfaceAlias $InterfaceAlias -AddressFamily IPv4).ServerAddresses)
+          if (($CurrentDnsServers -join ",") -ne ($DesiredDnsServers -join ",")) {
+            Set-DnsClientServerAddress -InterfaceAlias $InterfaceAlias -ServerAddresses $DesiredDnsServers
+            $Changed = $true
+          }
+        }
+
+        if ($DisableIpv6 -eq "true") {
+          $Ipv6Binding = Get-NetAdapterBinding -Name $InterfaceAlias -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue
+          if ($null -ne $Ipv6Binding -and $Ipv6Binding.Enabled) {
+            Disable-NetAdapterBinding -Name $InterfaceAlias -ComponentID ms_tcpip6
+            $Changed = $true
+          }
+        }
+
+        Write-Output "InterfaceAlias=$InterfaceAlias"
+        if ($RebootAfterNetwork -eq "true") {
+          Write-Output "REBOOT_SCHEDULED=True"
+          shutdown.exe /r /t 10 /c "Rebooting after Windows DC hostname and network baseline"
+        }
+        Write-Output "CHANGED=$Changed"
+      register: _windows_network
+      changed_when: >-
+        'CHANGED=True' in _windows_network.stdout or
+        'REBOOT_SCHEDULED=True' in _windows_network.stdout

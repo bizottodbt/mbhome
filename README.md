@@ -856,18 +856,16 @@ make proxmox-windows-template-build
 
 The validate/build targets generate an ignored local answer ISO at
 `infrastructure/packer/proxmox-windows-server/generated/Autounattend.iso`.
-That generated directory contains the rendered Administrator password, so it
-must stay out of git.
+They also generate `generated/SysprepUnattend.xml`, which lets cloned VMs pass
+through post-Sysprep OOBE without asking for a new local user. That generated
+directory contains the rendered Administrator password, so it must stay out of
+git.
 
 The build uses `Autounattend.xml` to install Windows, enables WinRM, connects
 once, runs the configured guest-tool/template preparation scripts, runs
-Sysprep, and converts the VM into a Proxmox template. For Terraform-created
-clones to receive hostnames and IP settings automatically, build the template
-with Cloudbase-Init enabled:
-
-```hcl
-enable_cloudbase_init = true
-```
+Sysprep with a clone-time unattended file, and converts the VM into a Proxmox
+template. Cloudbase-Init is optional; the AD VM flow below uses Ansible over
+WinRM to set the hostname and static IPv4 address after the clone boots.
 
 ### Create Microsoft AD DS VMs
 
@@ -875,13 +873,9 @@ The AD VM Terraform stack creates two long-lived Windows Server VMs by cloning
 the Packer-built Windows Server template. It intentionally enforces placement
 on different Proxmox nodes and uses the shared `proxmox-vms` datastore.
 
-Build the Windows Server template first. The template must include
-Cloudbase-Init if Terraform should set the Windows hostnames and static IP
-configuration on first boot. Terraform passes both metadata and a small
-PowerShell user-data script that configures IPv4, renames Windows, and reboots
-once when needed. Cloudbase-Init runs these first-boot steps only once, so
-rebuild/recreate clones after changing template Cloudbase-Init settings or
-Terraform user-data.
+Build the Windows Server template first. The template should have WinRM enabled
+by the Packer build so Ansible can finish per-VM configuration after Terraform
+creates the clones.
 
 Create the local vars file:
 
@@ -905,8 +899,6 @@ Edit `proxmox-ad-vms/terraform.local.tfvars` for AD-specific values:
 - `template_vm_id`: VMID of the Packer-built Windows Server template
 - `template_node_name`: Proxmox node that currently owns the template
 - `ad_vms.*.node_name`: keep the two VMs on different Proxmox nodes
-- `ad_vms.*.hostname`: Windows hostname to pass through Cloudbase-Init
-- `ad_vms.*.ipv4_address`: desired stable addresses to pass through Cloudbase-Init
 - `vm_datastore_id`: keep on shared storage, usually `proxmox-vms`
 - `snippet_datastore_id`: snippets-capable storage for generated metadata, usually `proxmox-snippets`
 
@@ -927,10 +919,31 @@ qm config 9201 | grep -E '^(name|boot|sata0|ide2|agent|net0|ostype):'
 qm config 9202 | grep -E '^(name|boot|sata0|ide2|agent|net0|ostype):'
 ```
 
-Terraform should stop at VM lifecycle, placement, hostname/IP metadata, and
-basic hardware. Domain creation, replication, DNS, time sync, and
-promotion/demotion are better handled after boot with PowerShell DSC or Ansible
-Windows modules over WinRM.
+After the VMs boot and WinRM is reachable, add their temporary DHCP addresses
+or final static addresses to `inventory/hosts.local.yaml` under
+`windows_domain_controllers`, then install the Windows Ansible collection and
+apply the simple Windows DC baseline:
+
+```bash
+make ansible-collections
+make windows-dc-baseline LIMIT='mbhome-ad-01:mbhome-ad-02'
+```
+
+If Ansible reports that WinRM support is missing on the controller, install the
+Python WinRM client used by Ansible:
+
+```bash
+python3 -m pip install pywinrm
+```
+
+The baseline sets the Windows hostname, reboots if the hostname changed, then
+sets the static IPv4 address, gateway, and DNS servers from inventory. If the
+first run uses temporary DHCP addresses, update `ansible_host` to the final
+static addresses after the network task completes.
+
+Terraform should stop at VM lifecycle, placement, and basic hardware. Domain
+creation, replication, DNS, time sync, and promotion/demotion are better
+handled after boot with PowerShell DSC or Ansible Windows modules over WinRM.
 
 This keeps Terraform from owning fragile, stateful domain-controller operations.
 

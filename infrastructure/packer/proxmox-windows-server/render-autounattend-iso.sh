@@ -10,12 +10,14 @@ work_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 generated_dir="${work_dir}/generated"
 iso_root="${generated_dir}/iso-root"
 answer_file="${iso_root}/Autounattend.xml"
+sysprep_answer_file="${generated_dir}/SysprepUnattend.xml"
 iso_file="${generated_dir}/Autounattend.iso"
 template_file="${work_dir}/answer_files/Autounattend.xml.pkrtpl"
+sysprep_template_file="${work_dir}/answer_files/SysprepUnattend.xml.pkrtpl"
 
 mkdir -p "${iso_root}"
 
-python3 - "$template_file" "$answer_file" "$@" <<'PY'
+python3 - "$template_file" "$answer_file" "$sysprep_template_file" "$sysprep_answer_file" "$@" <<'PY'
 import re
 import sys
 import xml.sax.saxutils
@@ -23,7 +25,9 @@ from pathlib import Path
 
 template_path = Path(sys.argv[1])
 output_path = Path(sys.argv[2])
-var_files = [Path(p) for p in sys.argv[3:]]
+sysprep_template_path = Path(sys.argv[3])
+sysprep_output_path = Path(sys.argv[4])
+var_files = [Path(p) for p in sys.argv[5:]]
 
 values = {
     "windows_computer_name": "PACKER-WIN",
@@ -61,21 +65,25 @@ mapping = {
     "timezone": values["windows_timezone"],
 }
 
-content = template_path.read_text(encoding="utf-8")
+def render_template(source_path):
+    content = source_path.read_text(encoding="utf-8")
 
-conditional = re.compile(
-    r'%\{\s*if\s+product_key\s*!=\s*""\s*~\}\n(.*?)%\{\s*endif\s*~\}\n',
-    re.DOTALL,
-)
-if mapping["product_key"]:
-    content = conditional.sub(lambda m: m.group(1), content)
-else:
-    content = conditional.sub("", content)
+    conditional = re.compile(
+        r'%\{\s*if\s+product_key\s*!=\s*""\s*~\}\n(.*?)%\{\s*endif\s*~\}\n',
+        re.DOTALL,
+    )
+    if mapping["product_key"]:
+        content = conditional.sub(lambda m: m.group(1), content)
+    else:
+        content = conditional.sub("", content)
 
-for key, value in mapping.items():
-    content = content.replace("${" + key + "}", xml.sax.saxutils.escape(value))
+    for key, value in mapping.items():
+        content = content.replace("${" + key + "}", xml.sax.saxutils.escape(value))
 
-output_path.write_text(content, encoding="utf-8")
+    return content
+
+output_path.write_text(render_template(template_path), encoding="utf-8")
+sysprep_output_path.write_text(render_template(sysprep_template_path), encoding="utf-8")
 PY
 
 rm -f "${iso_file}"
@@ -93,3 +101,4 @@ else
 fi
 
 echo "Generated ${iso_file}"
+echo "Generated ${sysprep_answer_file}"
