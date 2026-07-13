@@ -14,6 +14,7 @@
     _windows_dc_enable_rdp: "{{ windows_enable_rdp | default(true) | bool }}"
     _windows_rdp_firewall_rule_name: "{{ windows_rdp_firewall_rule_name | default('mbhome Remote Desktop TCP 3389') }}"
     _windows_disable_spice_agent: "{{ windows_disable_spice_agent | default(true) | bool }}"
+    _windows_disable_inventory_service: "{{ windows_disable_inventory_service | default(true) | bool }}"
     _windows_dc_features:
       - AD-Domain-Services
       - DNS
@@ -139,6 +140,30 @@
       register: _windows_spice_agent
       changed_when: "'CHANGED=True' in _windows_spice_agent.stdout"
       when: _windows_disable_spice_agent
+
+    - name: Disable Windows inventory compatibility appraisal service
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $Changed = $false
+
+        $Service = Get-Service -Name InventorySvc -ErrorAction SilentlyContinue
+        if ($null -ne $Service) {
+          if ($Service.Status -ne "Stopped") {
+            Stop-Service -Name InventorySvc -Force -ErrorAction SilentlyContinue
+            $Changed = $true
+          }
+
+          $WmiService = Get-CimInstance Win32_Service -Filter "Name='InventorySvc'"
+          if ($WmiService.StartMode -ne "Disabled") {
+            Set-Service -Name InventorySvc -StartupType Disabled
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_inventory_service
+      changed_when: "'CHANGED=True' in _windows_inventory_service.stdout"
+      when: _windows_disable_inventory_service
 
     - name: Confirm Remote Desktop is reachable
       ansible.builtin.wait_for:
