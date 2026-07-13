@@ -962,8 +962,33 @@ make windows-ad-forest
 
 The forest playbook promotes `mbhome-ad-01`, creates a new forest, enables DNS,
 uses the requested DSRM password, disables NetBIOS over TCP/IP, and leaves the
-server ready for a separate replica-promotion playbook. `WinThreshold` is the
-newest functional level accepted by modern AD DS deployment cmdlets.
+server ready for replica promotion. `WinThreshold` is the newest functional
+level accepted by modern AD DS deployment cmdlets.
+
+Then promote the second DC as a replica:
+
+```bash
+make windows-ad-replica
+```
+
+The replica playbook points `mbhome-ad-02` at the primary DC for DNS, promotes
+it as an additional domain controller with DNS and Global Catalog enabled,
+reboots, then confirms the server is a DC in the domain. If your domain admin
+credential is not the default `Administrator@<domain>` with the same password
+as `ansible_password`, set these local inventory variables:
+
+```yaml
+windows_ad_domain_admin_user: Administrator@ad.example.test
+windows_ad_domain_admin_password: CHANGE_ME_DOMAIN_ADMIN
+```
+
+After replica promotion, WinRM should normally use the domain credential. If
+needed, override the post-promotion connection explicitly:
+
+```yaml
+windows_ad_connection_user: Administrator@ad.example.test
+windows_ad_connection_password: CHANGE_ME_DOMAIN_ADMIN
+```
 
 Terraform should stop at VM lifecycle, placement, and basic hardware. Domain
 creation, replication, DNS, time sync, and promotion/demotion are better

@@ -147,8 +147,17 @@ all:
         windows_disable_spice_agent: true
         windows_dc_install_features: true
         windows_ad_domain_name: ad.example.test
+        windows_ad_domain_admin_user: Administrator@ad.example.test
         windows_ad_domain_netbios_name: AD
         windows_ad_safe_mode_password: CHANGE_ME_DSRM
+        windows_ad_domain_admin_user: Administrator@ad.example.test
+        windows_ad_domain_admin_password: CHANGE_ME_DOMAIN_ADMIN
+        windows_ad_replica_dns_client_servers:
+          - 192.0.2.61
+          - 192.0.2.62
+        windows_ad_primary_dns_client_servers:
+          - 192.0.2.62
+          - 192.0.2.61
         windows_ad_domain_mode: WinThreshold
         windows_ad_forest_mode: WinThreshold
         windows_dns_servers:
@@ -167,3 +176,7 @@ all:
     windows_ad_primary:
       hosts:
         mbhome-ad-01: {}
+
+    windows_ad_replicas:
+      hosts:
+        mbhome-ad-02: {}

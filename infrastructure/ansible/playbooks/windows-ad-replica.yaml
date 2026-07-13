@@ -1,0 +1,269 @@
+---
+- name: Promote additional Microsoft AD DS domain controllers
+  hosts: windows_ad_replicas
+  gather_facts: false
+  serial: 1
+
+  vars:
+    _windows_ad_domain_netbios_name: >-
+      {{ windows_ad_domain_netbios_name
+         | default(windows_ad_domain_name.split('.')[0] | upper) }}
+    _windows_ad_primary_host: "{{ groups['windows_ad_primary'][0] }}"
+    _windows_ad_primary_address: >-
+      {{ hostvars[_windows_ad_primary_host].windows_static_ip
+         | default(hostvars[_windows_ad_primary_host].ansible_host) }}
+    _windows_ad_replica_address: "{{ windows_static_ip | default(ansible_host) }}"
+    _windows_ad_domain_admin_user: >-
+      {{ windows_ad_domain_admin_user
+         | default('Administrator@' ~ windows_ad_domain_name) }}
+    _windows_ad_domain_admin_password: >-
+      {{ windows_ad_domain_admin_password | default(ansible_password) }}
+    _windows_ad_connection_user: "{{ windows_ad_connection_user | default(_windows_ad_domain_admin_user) }}"
+    _windows_ad_connection_password: "{{ windows_ad_connection_password | default(_windows_ad_domain_admin_password) }}"
+    _windows_ad_pre_promotion_dns_servers: >-
+      {{ windows_ad_pre_promotion_dns_servers
+         | default([_windows_ad_primary_address]) }}
+    _windows_ad_replica_dns_client_servers: >-
+      {{ windows_ad_replica_dns_client_servers
+         | default([_windows_ad_primary_address, _windows_ad_replica_address]) }}
+    _windows_ad_primary_dns_client_servers: >-
+      {{ windows_ad_primary_dns_client_servers
+         | default([_windows_ad_replica_address, _windows_ad_primary_address]) }}
+
+  tasks:
+    - name: Validate AD replica variables
+      ansible.builtin.assert:
+        that:
+          - windows_ad_domain_name is defined
+          - windows_ad_domain_name | length > 0
+          - windows_ad_domain_name is match('^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$')
+          - windows_ad_safe_mode_password is defined
+          - windows_ad_safe_mode_password | length >= 8
+          - _windows_ad_domain_admin_user | length > 0
+          - _windows_ad_domain_admin_password | length > 0
+          - groups['windows_ad_primary'] | length == 1
+        fail_msg: >-
+          Set windows_ad_domain_name, windows_ad_safe_mode_password, and a
+          reachable windows_ad_primary host before promoting replicas.
+
+    - name: Wait for WinRM
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ windows_wait_timeout | default(600) }}"
+
+    - name: Point replica DNS client at primary DC before promotion
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $DesiredDnsServers = @({{ _windows_ad_pre_promotion_dns_servers | map('to_json') | join(', ') }})
+        $Changed = $false
+
+        $Interfaces = Get-NetIPInterface -AddressFamily IPv4 |
+          Where-Object {
+            $_.ConnectionState -eq "Connected" -and
+            $_.InterfaceAlias -notlike "Loopback*"
+          }
+
+        foreach ($Interface in $Interfaces) {
+          $CurrentDnsServers = @((Get-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -AddressFamily IPv4).ServerAddresses)
+          if (($CurrentDnsServers -join ",") -ne ($DesiredDnsServers -join ",")) {
+            Set-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -ServerAddresses $DesiredDnsServers
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_pre_promotion_dns
+      changed_when: "'CHANGED=True' in _windows_ad_pre_promotion_dns.stdout"
+
+    - name: Disable NetBIOS over TCP/IP
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $Changed = $false
+
+        $Configs = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter "IPEnabled = True"
+        foreach ($Config in $Configs) {
+          if ($Config.TcpipNetbiosOptions -ne 2) {
+            $Result = $Config.SetTcpipNetbios(2)
+            if ($Result.ReturnValue -ne 0) {
+              throw "Failed to disable NetBIOS on interface index $($Config.InterfaceIndex). ReturnValue=$($Result.ReturnValue)"
+            }
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_netbios
+      changed_when: "'CHANGED=True' in _windows_ad_netbios.stdout"
+
+    - name: Promote replica domain controller with DNS
+      block:
+        - name: Write temporary AD replica password files
+          ansible.windows.win_copy:
+            content: "{{ item.content }}"
+            dest: "{{ item.dest }}"
+          loop:
+            - content: "{{ windows_ad_safe_mode_password }}"
+              dest: C:\Windows\Temp\windows_ad_dsrm_password.txt
+            - content: "{{ _windows_ad_domain_admin_password }}"
+              dest: C:\Windows\Temp\windows_ad_domain_admin_password.txt
+          no_log: true
+
+        - name: Run replica domain controller promotion
+          ansible.windows.win_shell: |
+            $ErrorActionPreference = "Stop"
+
+            $DomainName = "{{ windows_ad_domain_name }}"
+            $SafeModePasswordFile = "C:\Windows\Temp\windows_ad_dsrm_password.txt"
+            $DomainAdminPasswordFile = "C:\Windows\Temp\windows_ad_domain_admin_password.txt"
+            $SafeModePasswordPlain = (Get-Content -Raw -Path $SafeModePasswordFile).TrimEnd("`r", "`n")
+            $DomainAdminPasswordPlain = (Get-Content -Raw -Path $DomainAdminPasswordFile).TrimEnd("`r", "`n")
+            $SafeModePassword = ConvertTo-SecureString $SafeModePasswordPlain -AsPlainText -Force
+            $DomainAdminPassword = ConvertTo-SecureString $DomainAdminPasswordPlain -AsPlainText -Force
+            $DomainAdminCredential = New-Object System.Management.Automation.PSCredential ("{{ _windows_ad_domain_admin_user }}", $DomainAdminPassword)
+
+            Import-Module ADDSDeployment
+            Import-Module ActiveDirectory
+
+            $CredentialCheck = Get-ADDomain -Server "{{ _windows_ad_primary_address }}" -Credential $DomainAdminCredential -ErrorAction Stop
+            if ($CredentialCheck.DNSRoot -ine $DomainName) {
+              throw "Credential check reached domain $($CredentialCheck.DNSRoot), expected $DomainName."
+            }
+
+            try {
+              $DomainController = Get-ADDomainController -Identity $env:COMPUTERNAME -ErrorAction Stop
+              if ($DomainController.Domain -ieq $DomainName) {
+                Write-Output "CHANGED=False"
+                Write-Output "DOMAIN_CONTROLLER_EXISTS=$($DomainController.HostName)"
+                exit 0
+              }
+            } catch {
+              if ($_.Exception.Message -notmatch "Cannot find an object|Unable to find a default server|The server is not operational|The specified domain either does not exist") {
+                throw
+              }
+            }
+
+            Install-ADDSDomainController `
+              -DomainName $DomainName `
+              -Credential $DomainAdminCredential `
+              -SafeModeAdministratorPassword $SafeModePassword `
+              -InstallDns `
+              -NoGlobalCatalog:$false `
+              -CreateDnsDelegation:$false `
+              -NoRebootOnCompletion:$true `
+              -Force
+
+            shutdown.exe /r /t 10 /c "Rebooting after AD DS replica promotion"
+            Write-Output "REBOOT_SCHEDULED=True"
+            Write-Output "CHANGED=True"
+          register: _windows_ad_replica
+          changed_when: "'CHANGED=True' in _windows_ad_replica.stdout"
+      rescue:
+        - name: Remove temporary AD replica password files after failed promotion
+          ansible.windows.win_file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - C:\Windows\Temp\windows_ad_dsrm_password.txt
+            - C:\Windows\Temp\windows_ad_domain_admin_password.txt
+          ignore_unreachable: true
+
+        - name: Fail replica promotion
+          ansible.builtin.fail:
+            msg: "Replica promotion failed. See the failed promotion task above."
+
+    - name: Wait for WinRM to stop after replica promotion
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ ansible_port | default(5985) }}"
+        state: stopped
+        delay: 5
+        timeout: "{{ windows_ad_reboot_stop_timeout | default(300) }}"
+      delegate_to: localhost
+      when: _windows_ad_replica.changed
+
+    - name: Wait for WinRM after replica promotion
+      ansible.builtin.wait_for_connection:
+        delay: 60
+        timeout: "{{ windows_ad_reboot_timeout | default(2400) }}"
+      vars:
+        ansible_user: "{{ _windows_ad_connection_user }}"
+        ansible_password: "{{ _windows_ad_connection_password }}"
+      when: _windows_ad_replica.changed
+
+    - name: Set replica DNS client to AD DNS servers
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $DesiredDnsServers = @({{ _windows_ad_replica_dns_client_servers | map('to_json') | join(', ') }})
+        $Changed = $false
+
+        $Interfaces = Get-NetIPInterface -AddressFamily IPv4 |
+          Where-Object {
+            $_.ConnectionState -eq "Connected" -and
+            $_.InterfaceAlias -notlike "Loopback*"
+          }
+
+        foreach ($Interface in $Interfaces) {
+          $CurrentDnsServers = @((Get-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -AddressFamily IPv4).ServerAddresses)
+          if (($CurrentDnsServers -join ",") -ne ($DesiredDnsServers -join ",")) {
+            Set-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -ServerAddresses $DesiredDnsServers
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_replica_dns
+      changed_when: "'CHANGED=True' in _windows_ad_replica_dns.stdout"
+      vars:
+        ansible_user: "{{ _windows_ad_connection_user }}"
+        ansible_password: "{{ _windows_ad_connection_password }}"
+
+    - name: Confirm replica domain controller
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        Import-Module ActiveDirectory
+
+        $Domain = Get-ADDomain
+        if ($Domain.DNSRoot -ine "{{ windows_ad_domain_name }}") {
+          throw "Expected domain {{ windows_ad_domain_name }}, got $($Domain.DNSRoot)."
+        }
+
+        $DomainController = Get-ADDomainController -Identity $env:COMPUTERNAME
+        if ($DomainController.Domain -ine "{{ windows_ad_domain_name }}") {
+          throw "This server is not a DC for {{ windows_ad_domain_name }}."
+        }
+
+        Write-Output "Domain=$($Domain.DNSRoot)"
+        Write-Output "Replica=$($DomainController.HostName)"
+        Write-Output "Site=$($DomainController.Site)"
+        Write-Output "IsGlobalCatalog=$($DomainController.IsGlobalCatalog)"
+      changed_when: false
+      vars:
+        ansible_user: "{{ _windows_ad_connection_user }}"
+        ansible_password: "{{ _windows_ad_connection_password }}"
+
+    - name: Point primary DNS client at replica and itself
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $DesiredDnsServers = @({{ _windows_ad_primary_dns_client_servers | map('to_json') | join(', ') }})
+        $Changed = $false
+
+        $Interfaces = Get-NetIPInterface -AddressFamily IPv4 |
+          Where-Object {
+            $_.ConnectionState -eq "Connected" -and
+            $_.InterfaceAlias -notlike "Loopback*"
+          }
+
+        foreach ($Interface in $Interfaces) {
+          $CurrentDnsServers = @((Get-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -AddressFamily IPv4).ServerAddresses)
+          if (($CurrentDnsServers -join ",") -ne ($DesiredDnsServers -join ",")) {
+            Set-DnsClientServerAddress -InterfaceIndex $Interface.InterfaceIndex -ServerAddresses $DesiredDnsServers
+            $Changed = $true
+          }
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_primary_dns
+      changed_when: "'CHANGED=True' in _windows_ad_primary_dns.stdout"
+      delegate_to: "{{ _windows_ad_primary_host }}"
+      vars:
+        ansible_user: "{{ hostvars[_windows_ad_primary_host].windows_ad_connection_user | default(_windows_ad_connection_user) }}"
+        ansible_password: "{{ hostvars[_windows_ad_primary_host].windows_ad_connection_password | default(_windows_ad_connection_password) }}"

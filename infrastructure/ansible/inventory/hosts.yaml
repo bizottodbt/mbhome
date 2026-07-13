@@ -72,6 +72,10 @@ all:
       hosts:
         mbhome-ad-01: {}
 
+    windows_ad_replicas:
+      hosts:
+        mbhome-ad-02: {}
+
     k3s_control_plane:
       hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)
 
