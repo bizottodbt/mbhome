@@ -6,6 +6,8 @@ template_name  = "tpl-windows-server-2025"
 windows_iso_file_id  = "proxmox-isos:iso/Windows_Server_2025_Eval.iso"
 windows_iso_checksum = "none"
 windows_image_name   = "Windows Server 2025 SERVERSTANDARD"
+windows_image_index  = "" # Optional. Set to "2" etc. when name matching does not work.
+windows_product_key  = "" # Optional. Set for media that requires a key, such as some Insider/vNext ISOs.
 
 windows_admin_password = "CHANGE_ME_BUILD_ONLY"
 winrm_host             = ""

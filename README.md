@@ -836,6 +836,10 @@ Edit `packer.local.pkrvars.hcl`:
 - `proxmox_node`: node where the temporary build VM should run
 - `windows_iso_file_id`: Proxmox file ID for the Windows Server installer ISO
 - `windows_image_name`: exact edition name inside the ISO
+- `windows_image_index`: optional image index inside the ISO; when set, it
+  overrides `windows_image_name`
+- `windows_product_key`: optional installer key for media that requires one;
+  leave empty for evaluation media
 - `windows_admin_password`: temporary Administrator password used by Packer
 - `template_vm_id` / `template_name`: final Proxmox template identity
 
@@ -845,6 +849,10 @@ Windows machine:
 ```powershell
 dism /Get-WimInfo /WimFile:D:\sources\install.wim
 ```
+
+For ISOs where unattended name matching still shows the installer's image
+selection screen, set `windows_image_index` instead. For example, use `"2"` for
+the second image shown by the installer.
 
 Then build the template:
 
@@ -856,6 +864,7 @@ make proxmox-windows-template-build
 
 The validate/build targets generate an ignored local answer ISO at
 `infrastructure/packer/proxmox-windows-server/generated/Autounattend.iso`.
+When `windows_product_key` is set, it is embedded into that local answer ISO.
 They also generate `generated/SysprepUnattend.xml`, which lets cloned VMs pass
 through post-Sysprep OOBE without asking for a new local user. That generated
 directory contains the rendered Administrator password, so it must stay out of
@@ -1044,6 +1053,12 @@ The reconciler creates missing OUs, groups, users, service accounts, and
 declared memberships. It does not delete unmanaged AD objects, which keeps early
 homelab iteration safer. Enabled new users and service accounts must include a
 `password` in `directory.local.yaml` so they can be created.
+
+For Linux/SSSD integration, configure `posix` ranges in
+`directory.local.yaml`. The reconciler allocates the next available values from
+AD, writes user UIDs as `uidNumber`, writes group GIDs as `gidNumber`, creates a
+same-named private POSIX group for each normal user, and sets the user's
+`gidNumber` to that private group's GID.
 
 Terraform should stop at VM lifecycle, placement, and basic hardware. Domain
 creation, replication, DNS, time sync, and promotion/demotion are better

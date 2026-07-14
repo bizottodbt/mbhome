@@ -80,8 +80,8 @@
         <OSImage>
           <InstallFrom>
             <MetaData wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
-              <Key>/IMAGE/NAME</Key>
-              <Value>${image_name}</Value>
+              <Key>${image_selector_key}</Key>
+              <Value>${image_selector_value}</Value>
             </MetaData>
           </InstallFrom>
           <InstallTo>

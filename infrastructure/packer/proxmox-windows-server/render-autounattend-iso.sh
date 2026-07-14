@@ -31,6 +31,7 @@ var_files = [Path(p) for p in sys.argv[5:]]
 
 values = {
     "windows_computer_name": "PACKER-WIN",
+    "windows_image_index": "",
     "windows_input_locale": "en-US",
     "windows_product_key": "",
     "windows_timezone": "W. Europe Standard Time",
@@ -48,7 +49,6 @@ for var_file in var_files:
 required = [
     "windows_admin_password",
     "windows_computer_name",
-    "windows_image_name",
     "windows_input_locale",
     "windows_timezone",
 ]
@@ -56,10 +56,20 @@ missing = [key for key in required if not values.get(key)]
 if missing:
     raise SystemExit(f"Missing required Packer vars for Autounattend.xml: {', '.join(missing)}")
 
+if values.get("windows_image_index"):
+    image_selector_key = "/IMAGE/INDEX"
+    image_selector_value = values["windows_image_index"]
+elif values.get("windows_image_name"):
+    image_selector_key = "/IMAGE/NAME"
+    image_selector_value = values["windows_image_name"]
+else:
+    raise SystemExit("Set windows_image_name or windows_image_index for Autounattend.xml")
+
 mapping = {
     "administrator_password": values["windows_admin_password"],
     "computer_name": values["windows_computer_name"],
-    "image_name": values["windows_image_name"],
+    "image_selector_key": image_selector_key,
+    "image_selector_value": image_selector_value,
     "input_locale": values["windows_input_locale"],
     "product_key": values.get("windows_product_key", ""),
     "timezone": values["windows_timezone"],

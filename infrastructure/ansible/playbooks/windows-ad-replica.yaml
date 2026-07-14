@@ -29,6 +29,8 @@
     _windows_ad_primary_dns_client_servers: >-
       {{ windows_ad_primary_dns_client_servers
          | default([_windows_ad_replica_address, _windows_ad_primary_address]) }}
+    _windows_ad_primary_fqdn: "{{ _windows_ad_primary_host }}.{{ windows_ad_domain_name }}"
+    _windows_ad_replica_fqdn: "{{ inventory_hostname }}.{{ windows_ad_domain_name }}"
 
   tasks:
     - name: Validate AD replica variables
@@ -267,3 +269,86 @@
       vars:
         ansible_user: "{{ hostvars[_windows_ad_primary_host].windows_ad_connection_user | default(_windows_ad_connection_user) }}"
         ansible_password: "{{ hostvars[_windows_ad_primary_host].windows_ad_connection_password | default(_windows_ad_connection_password) }}"
+
+    - name: Add replica to Server Manager on primary DC
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $ServerName = "{{ _windows_ad_replica_fqdn }}"
+        $Changed = $false
+
+        $ServerManagerDir = Join-Path $env:APPDATA "Microsoft\Windows\ServerManager"
+        $ServerListPath = Join-Path $ServerManagerDir "ServerList.xml"
+        New-Item -Path $ServerManagerDir -ItemType Directory -Force | Out-Null
+
+        if (Test-Path $ServerListPath) {
+          [xml]$ServerList = Get-Content -Raw -Path $ServerListPath
+        } else {
+          [xml]$ServerList = '<ServerList xmlns="urn:serverpool-schema" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" />'
+          $Changed = $true
+        }
+
+        $Namespace = New-Object System.Xml.XmlNamespaceManager($ServerList.NameTable)
+        $Namespace.AddNamespace("sm", "urn:serverpool-schema")
+        $Existing = $ServerList.SelectSingleNode("//sm:ServerInfo[translate(@name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='$($ServerName.ToLowerInvariant())']", $Namespace)
+
+        if ($null -eq $Existing) {
+          $ServerInfo = $ServerList.CreateElement("ServerInfo", "urn:serverpool-schema")
+          $ServerInfo.SetAttribute("name", $ServerName)
+          $ServerInfo.SetAttribute("status", "1")
+          $ServerInfo.SetAttribute("lastUpdateTime", [DateTime]::UtcNow.ToString("o"))
+          $ServerList.DocumentElement.AppendChild($ServerInfo) | Out-Null
+          $Changed = $true
+        }
+
+        if ($Changed) {
+          $ServerList.Save($ServerListPath)
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_primary_server_manager
+      changed_when: "'CHANGED=True' in _windows_ad_primary_server_manager.stdout"
+      delegate_to: "{{ _windows_ad_primary_host }}"
+      vars:
+        ansible_user: "{{ hostvars[_windows_ad_primary_host].windows_ad_connection_user | default(_windows_ad_connection_user) }}"
+        ansible_password: "{{ hostvars[_windows_ad_primary_host].windows_ad_connection_password | default(_windows_ad_connection_password) }}"
+
+    - name: Add primary to Server Manager on replica DC
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+        $ServerName = "{{ _windows_ad_primary_fqdn }}"
+        $Changed = $false
+
+        $ServerManagerDir = Join-Path $env:APPDATA "Microsoft\Windows\ServerManager"
+        $ServerListPath = Join-Path $ServerManagerDir "ServerList.xml"
+        New-Item -Path $ServerManagerDir -ItemType Directory -Force | Out-Null
+
+        if (Test-Path $ServerListPath) {
+          [xml]$ServerList = Get-Content -Raw -Path $ServerListPath
+        } else {
+          [xml]$ServerList = '<ServerList xmlns="urn:serverpool-schema" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" />'
+          $Changed = $true
+        }
+
+        $Namespace = New-Object System.Xml.XmlNamespaceManager($ServerList.NameTable)
+        $Namespace.AddNamespace("sm", "urn:serverpool-schema")
+        $Existing = $ServerList.SelectSingleNode("//sm:ServerInfo[translate(@name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='$($ServerName.ToLowerInvariant())']", $Namespace)
+
+        if ($null -eq $Existing) {
+          $ServerInfo = $ServerList.CreateElement("ServerInfo", "urn:serverpool-schema")
+          $ServerInfo.SetAttribute("name", $ServerName)
+          $ServerInfo.SetAttribute("status", "1")
+          $ServerInfo.SetAttribute("lastUpdateTime", [DateTime]::UtcNow.ToString("o"))
+          $ServerList.DocumentElement.AppendChild($ServerInfo) | Out-Null
+          $Changed = $true
+        }
+
+        if ($Changed) {
+          $ServerList.Save($ServerListPath)
+        }
+
+        Write-Output "CHANGED=$Changed"
+      register: _windows_ad_replica_server_manager
+      changed_when: "'CHANGED=True' in _windows_ad_replica_server_manager.stdout"
+      vars:
+        ansible_user: "{{ _windows_ad_connection_user }}"
+        ansible_password: "{{ _windows_ad_connection_password }}"

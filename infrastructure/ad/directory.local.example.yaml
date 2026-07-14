@@ -5,6 +5,17 @@ domain: ad.example
 base_dn: DC=ad,DC=example
 protect_ous_from_accidental_deletion: true
 service_accounts_path: OU=Service Accounts,OU=LAB,DC=ad,DC=example
+posix:
+  user_uid_range:
+    start: 10000
+    end: 19999
+  group_gid_range:
+    start: 20000
+    end: 29999
+  primary_gid_range:
+    start: 30000
+    end: 39999
+  primary_groups_path: OU=Groups,OU=LAB,DC=ad,DC=example
 
 ous:
   - name: LAB

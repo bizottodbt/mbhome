@@ -55,6 +55,12 @@ variable "windows_image_name" {
   default     = "Windows Server 2025 SERVERSTANDARD"
 }
 
+variable "windows_image_index" {
+  description = "Optional Windows image index inside install.wim. When set, Autounattend selects by index instead of windows_image_name."
+  type        = string
+  default     = ""
+}
+
 variable "windows_product_key" {
   description = "Optional Windows product key. Leave empty for evaluation media."
   type        = string
