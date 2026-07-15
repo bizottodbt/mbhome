@@ -1,0 +1,61 @@
+---
+- name: Reconcile declarative Active Directory DNS records
+  hosts: windows_ad_primary
+  gather_facts: false
+
+  vars:
+    _ad_dns_state_path: "{{ playbook_dir }}/../../ad/dns.local.yaml"
+    _ad_dns_remote_state_path: C:\Windows\Temp\mbhome-ad-dns-state.json
+    _ad_dns_remote_script_path: C:\Windows\Temp\mbhome-ad-dns-reconcile.ps1
+    _ad_dns_check: "{{ ad_dns_check | default(false) | bool }}"
+
+  tasks:
+    - name: Load local AD DNS desired state
+      ansible.builtin.include_vars:
+        file: "{{ _ad_dns_state_path }}"
+        name: ad_dns
+
+    - name: Validate AD DNS desired state
+      ansible.builtin.assert:
+        that:
+          - ad_dns.forwarders is defined or ad_dns.zones is defined
+        fail_msg: >-
+          infrastructure/ad/dns.local.yaml must define forwarders and/or at
+          least one zone under zones.
+
+    - name: Wait for WinRM
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ windows_wait_timeout | default(600) }}"
+
+    - name: Copy AD DNS desired state to primary DC
+      ansible.windows.win_copy:
+        content: "{{ ad_dns | to_json }}"
+        dest: "{{ _ad_dns_remote_state_path }}"
+
+    - name: Copy AD DNS reconciler script to primary DC
+      ansible.windows.win_copy:
+        src: "{{ playbook_dir }}/templates/windows-ad-dns-reconcile.ps1"
+        dest: "{{ _ad_dns_remote_script_path }}"
+
+    - name: Reconcile AD DNS desired state
+      ansible.windows.win_shell: >-
+        & "{{ _ad_dns_remote_script_path }}"
+        -StatePath "{{ _ad_dns_remote_state_path }}"
+        -CheckMode:{{ _ad_dns_check | ternary('$true', '$false') }}
+      register: _ad_dns_reconcile
+      changed_when: >-
+        not _ad_dns_check and
+        'CHANGED=True' in _ad_dns_reconcile.stdout
+      check_mode: false
+
+    - name: Remove temporary AD DNS files
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ _ad_dns_remote_state_path }}"
+        - "{{ _ad_dns_remote_script_path }}"
+
+    - name: Report AD DNS reconciliation output
+      ansible.builtin.debug:
+        var: _ad_dns_reconcile.stdout_lines

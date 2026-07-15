@@ -15,12 +15,6 @@ variable "proxmox_node" {
   default     = "pve-01"
 }
 
-variable "k3s_version" {
-  description = "k3s version to install on VMs via cloud-init"
-  type        = string
-  default     = "v1.35.5+k3s1"
-}
-
 variable "vm_network_bridge" {
   description = "Proxmox network bridge for VM NICs"
   type        = string
@@ -31,10 +25,4 @@ variable "nfs_storage_id" {
   description = "Proxmox storage ID for Unraid NFS VM disks (proxmox-vm share)"
   type        = string
   default     = "unraid-vm"
-}
-
-variable "k3s_token" {
-  description = "Shared token for k3s cluster join"
-  type        = string
-  sensitive   = true
 }

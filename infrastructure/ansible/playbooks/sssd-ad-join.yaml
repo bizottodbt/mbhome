@@ -1,7 +1,7 @@
 ---
 # Phase 3 — run after Active Directory domain is deployed as a VM on Proxmox.
 - name: Join nodes to Active Directory via SSSD
-  hosts: proxmox_nodes:k3s_control_plane:k3s_workers
+  hosts: proxmox_nodes
   become: true
   roles:
     - sssd

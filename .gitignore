@@ -8,6 +8,7 @@ infrastructure/ansible/vars/proxmox-api-tokens.local.generated
 infrastructure/ansible/vars/proxmox-users.local.yaml
 infrastructure/ad/directory.yaml
 infrastructure/ad/directory.local.yaml
+infrastructure/ad/dns.local.yaml
 infrastructure/ironic/nodes/proxmox-nodes.yaml
 
 # Kolla-Ansible — contains all OpenStack service passwords
@@ -45,6 +46,14 @@ infrastructure/packer/proxmox-windows-server/generated/
 
 # kubeconfig fragments
 *.kubeconfig
+
+# Talos generated cluster material
+infrastructure/talos/clusters/*/controlplane.yaml
+infrastructure/talos/clusters/*/worker.yaml
+infrastructure/talos/clusters/*/nodes/
+infrastructure/talos/clusters/*/talosconfig
+infrastructure/talos/clusters/*/secrets.yaml
+infrastructure/talos/clusters/*/kubeconfig
 
 # macOS
 .DS_Store

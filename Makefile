@@ -22,13 +22,29 @@ PROXMOX_TF_SHARED_DIR := infrastructure/terraform
 PROXMOX_TF_SHARED_VARS := $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.tfvars),-var-file=../proxmox.shared.tfvars,) $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.local.tfvars),-var-file=../proxmox.shared.local.tfvars,)
 PROXMOX_SMOKE_TF_DIR := infrastructure/terraform/proxmox-smoke-vm
 PROXMOX_SMOKE_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_SMOKE_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
+PROXMOX_TALOS_TF_DIR := infrastructure/terraform/proxmox-talos-vm
+PROXMOX_TALOS_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_TALOS_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_TALOS_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
 PROXMOX_AD_TF_DIR := infrastructure/terraform/proxmox-ad-vms
 PROXMOX_AD_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_AD_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_AD_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
 PROXMOX_WINDOWS_PACKER_DIR := infrastructure/packer/proxmox-windows-server
 PROXMOX_WINDOWS_PACKER_SHARED_VARS := $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.pkrvars.hcl),-var-file=../../terraform/proxmox.shared.pkrvars.hcl,) $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.local.pkrvars.hcl),-var-file=../../terraform/proxmox.shared.local.pkrvars.hcl,)
 PROXMOX_WINDOWS_PACKER_VARS := $(PROXMOX_WINDOWS_PACKER_SHARED_VARS) $(if $(wildcard $(PROXMOX_WINDOWS_PACKER_DIR)/packer.pkrvars.hcl),-var-file=packer.pkrvars.hcl,) $(if $(wildcard $(PROXMOX_WINDOWS_PACKER_DIR)/packer.local.pkrvars.hcl),-var-file=packer.local.pkrvars.hcl,)
+TALOS_CLUSTER_DIR := infrastructure/talos/clusters/mbhome
+TALOS_CLUSTER_NAME ?= mbhome
+TALOS_CONTROL_PLANE_IP ?=
+TALOS_K8S_ENDPOINT ?= $(TALOS_CONTROL_PLANE_IP)
+TALOS_ENDPOINT ?= $(TALOS_CONTROL_PLANE_IP)
+TALOS_NODE ?= $(TALOS_CONTROL_PLANE_IP)
+TALOS_NODE_NAME ?= mbhome-talos-cp-01
+TALOS_CONTROL_PLANE_NODES ?= mbhome-talos-cp-01 mbhome-talos-cp-02 mbhome-talos-cp-03
+TALOS_WORKER_NODES ?= mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos-worker-03
+TALOS_MACHINE_CONFIG ?= $(TALOS_CLUSTER_DIR)/nodes/$(TALOS_NODE_NAME).yaml
+TALOSCONFIG := $(CURDIR)/$(TALOS_CLUSTER_DIR)/talosconfig
+KUBECONFIG_FILE ?= $(CURDIR)/$(TALOS_CLUSTER_DIR)/kubeconfig
+CILIUM_DIR := infrastructure/kubernetes/cilium
+CILIUM_VERSION ?= 1.19.5
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health cilium-helm-repo cilium-install cilium-status cilium-uninstall proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -144,6 +160,12 @@ windows-ad-directory-check: ## Preview declarative AD users/groups/OUs changes
 windows-ad-directory-apply: ## Apply declarative AD users/groups/OUs changes
 	cd $(ANSIBLE_DIR) && OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ANSIBLE_FORKS=1 ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp ansible-playbook $(ANSIBLE_INVENTORY) playbooks/windows-ad-directory.yaml $(if $(LIMIT),--limit $(LIMIT),)
 
+windows-ad-dns-check: ## Preview declarative AD DNS record changes
+	cd $(ANSIBLE_DIR) && OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ANSIBLE_FORKS=1 ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp ansible-playbook $(ANSIBLE_INVENTORY) playbooks/windows-ad-dns.yaml -e ad_dns_check=true $(if $(LIMIT),--limit $(LIMIT),)
+
+windows-ad-dns-apply: ## Apply declarative AD DNS record changes
+	cd $(ANSIBLE_DIR) && OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ANSIBLE_FORKS=1 ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp ansible-playbook $(ANSIBLE_INVENTORY) playbooks/windows-ad-dns.yaml $(if $(LIMIT),--limit $(LIMIT),)
+
 proxmox-smoke-vm-init: ## Initialize Terraform for the disposable Proxmox smoke VM
 	cd $(PROXMOX_SMOKE_TF_DIR) && terraform init
 
@@ -155,6 +177,110 @@ proxmox-smoke-vm-apply: ## Create/update the disposable Proxmox smoke VM
 
 proxmox-smoke-vm-destroy: ## Destroy the disposable Proxmox smoke VM
 	cd $(PROXMOX_SMOKE_TF_DIR) && terraform destroy $(PROXMOX_SMOKE_TF_VARS)
+
+proxmox-talos-vm-init: ## Initialize Terraform for the first Talos Kubernetes VM
+	cd $(PROXMOX_TALOS_TF_DIR) && terraform init
+
+proxmox-talos-vm-plan: ## Plan the first Talos Kubernetes VM
+	cd $(PROXMOX_TALOS_TF_DIR) && terraform plan $(PROXMOX_TALOS_TF_VARS)
+
+proxmox-talos-vm-apply: ## Create/update the first Talos Kubernetes VM
+	cd $(PROXMOX_TALOS_TF_DIR) && terraform apply $(PROXMOX_TALOS_TF_VARS)
+
+proxmox-talos-vm-destroy: ## Destroy the first Talos Kubernetes VM
+	cd $(PROXMOX_TALOS_TF_DIR) && terraform destroy $(PROXMOX_TALOS_TF_VARS)
+
+talos-inspect: ## Inspect booted Talos ISO disks and network links before applying config
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	talosctl get disks --insecure --nodes "$(TALOS_NODE)"
+	talosctl get links --insecure --nodes "$(TALOS_NODE)"
+
+talos-gen-secrets: ## Generate ignored Talos cluster secrets
+	@test -d "$(TALOS_CLUSTER_DIR)" || (echo "Missing $(TALOS_CLUSTER_DIR)"; exit 1)
+	@test ! -f "$(TALOS_CLUSTER_DIR)/secrets.yaml" || (echo "$(TALOS_CLUSTER_DIR)/secrets.yaml already exists; move it away before regenerating"; exit 1)
+	talosctl gen secrets -o "$(TALOS_CLUSTER_DIR)/secrets.yaml"
+
+talos-gen-config: ## Generate ignored Talos controlplane/worker configs from patches
+	@test -n "$(TALOS_K8S_ENDPOINT)" || (echo "Set TALOS_K8S_ENDPOINT=<kubernetes-api-dns-or-ip>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/secrets.yaml" || (echo "Run make talos-gen-secrets first"; exit 1)
+	talosctl gen config "$(TALOS_CLUSTER_NAME)" "https://$(TALOS_K8S_ENDPOINT):6443" \
+		--with-secrets "$(TALOS_CLUSTER_DIR)/secrets.yaml" \
+		--output-dir "$(TALOS_CLUSTER_DIR)" \
+		--force \
+		--config-patch-control-plane @"$(TALOS_CLUSTER_DIR)/patches/controlplane.yaml" \
+		--config-patch-worker @"$(TALOS_CLUSTER_DIR)/patches/worker.yaml"
+	@mkdir -p "$(TALOS_CLUSTER_DIR)/nodes"
+	@for node in $(TALOS_CONTROL_PLANE_NODES); do \
+		test -f "$(TALOS_CLUSTER_DIR)/patches/nodes/$$node.yaml" || (echo "Missing $(TALOS_CLUSTER_DIR)/patches/nodes/$$node.yaml"; exit 1); \
+		talosctl machineconfig patch "$(TALOS_CLUSTER_DIR)/controlplane.yaml" \
+			--patch @"$(TALOS_CLUSTER_DIR)/patches/nodes/$$node.yaml" \
+			--output "$(TALOS_CLUSTER_DIR)/nodes/$$node.yaml"; \
+	done
+	@for node in $(TALOS_WORKER_NODES); do \
+		test -f "$(TALOS_CLUSTER_DIR)/patches/nodes/$$node.yaml" || (echo "Missing $(TALOS_CLUSTER_DIR)/patches/nodes/$$node.yaml"; exit 1); \
+		talosctl machineconfig patch "$(TALOS_CLUSTER_DIR)/worker.yaml" \
+			--patch @"$(TALOS_CLUSTER_DIR)/patches/nodes/$$node.yaml" \
+			--output "$(TALOS_CLUSTER_DIR)/nodes/$$node.yaml"; \
+	done
+
+talos-apply-insecure: ## Apply a generated Talos node config to an unconfigured ISO-booted VM
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -f "$(TALOS_MACHINE_CONFIG)" || (echo "Run make talos-gen-config first or set TALOS_NODE_NAME=<node-name>"; exit 1)
+	talosctl apply-config --insecure --nodes "$(TALOS_NODE)" --file "$(TALOS_MACHINE_CONFIG)"
+
+talos-apply-controlplane-insecure: talos-apply-insecure
+
+talos-apply: ## Reapply a generated Talos node config using generated talosconfig
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@test -f "$(TALOS_MACHINE_CONFIG)" || (echo "Run make talos-gen-config first or set TALOS_NODE_NAME=<node-name>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl apply-config --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)" --file "$(TALOS_MACHINE_CONFIG)"
+
+talos-apply-controlplane: talos-apply
+
+talos-bootstrap: ## Bootstrap Kubernetes on the first Talos control-plane node
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl config endpoint "$(TALOS_ENDPOINT)"
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl config node "$(TALOS_NODE)"
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl bootstrap --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)"
+
+talos-kubeconfig: ## Fetch Kubernetes kubeconfig from Talos
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl kubeconfig "$(TALOS_CLUSTER_DIR)" --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)"
+
+talos-health: ## Check Talos and Kubernetes control-plane health
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl health --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)"
+
+cilium-helm-repo: ## Add/update the Cilium Helm repository
+	helm repo add cilium https://helm.cilium.io
+	helm repo update cilium
+
+cilium-install: ## Install or upgrade Cilium on the Talos Kubernetes cluster
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -f "$(CILIUM_DIR)/values.yaml" || (echo "Missing $(CILIUM_DIR)/values.yaml"; exit 1)
+	helm upgrade --install cilium cilium/cilium \
+		--version "$(CILIUM_VERSION)" \
+		--namespace kube-system \
+		--kubeconfig "$(KUBECONFIG_FILE)" \
+		--values "$(CILIUM_DIR)/values.yaml"
+
+cilium-status: ## Show Cilium pods and Kubernetes node readiness
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l k8s-app=cilium -o wide
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l name=cilium-operator -o wide
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get nodes -o wide
+
+cilium-uninstall: ## Remove Cilium from the cluster
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	helm uninstall cilium --namespace kube-system --kubeconfig "$(KUBECONFIG_FILE)"
 
 proxmox-ad-vms-init: ## Initialize Terraform for AD/domain-controller VM shells
 	cd $(PROXMOX_AD_TF_DIR) && terraform init

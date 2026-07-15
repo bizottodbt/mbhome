@@ -76,8 +76,13 @@ all:
       hosts:
         mbhome-ad-02: {}
 
-    k3s_control_plane:
-      hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)
+    talos_control_plane:
+      hosts: {}  # TODO: populate after Terraform provisions Talos VMs
 
-    k3s_workers:
-      hosts: {}  # TODO: populate after Terraform provisions VMs (Phase 2)
+    talos_workers:
+      hosts: {}  # TODO: populate after Terraform provisions Talos VMs
+
+    kubernetes_nodes:
+      children:
+        talos_control_plane: {}
+        talos_workers: {}

@@ -1,0 +1,28 @@
+---
+# Copy to dns.local.yaml and fill in local DNS settings.
+# dns.local.yaml is gitignored.
+forwarders:
+  - 192.0.2.1
+  - 1.1.1.1
+  - 8.8.8.8
+
+zones:
+  - name: ad.example
+    records:
+      - name: k8s-api
+        type: A
+        value: 192.0.2.50
+        ttl: 300
+        state: present
+
+      - name: talos-cp-01
+        type: A
+        value: 192.0.2.70
+        ttl: 300
+        state: present
+
+      - name: unraid
+        type: A
+        value: 192.0.2.50
+        ttl: 300
+        state: present

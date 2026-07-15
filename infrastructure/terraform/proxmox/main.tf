@@ -28,6 +28,6 @@ provider "proxmox" {
   insecure  = false
 
   ssh {
-    agent = true  # uses ssh-agent forwarding for Proxmox SSH tasks
+    agent = true # uses ssh-agent forwarding for Proxmox SSH tasks
   }
 }
