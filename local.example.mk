@@ -21,3 +21,6 @@ TALOS_NODE := $(TALOS_CONTROL_PLANE_IP)
 TALOS_NODE_NAME := mbhome-talos-cp-01
 TALOS_CONTROL_PLANE_NODES := mbhome-talos-cp-01 mbhome-talos-cp-02 mbhome-talos-cp-03
 TALOS_WORKER_NODES := mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos-worker-03
+TALOS_UPGRADE_VERSION := v1.13.6
+TALOS_UPGRADE_IMAGE := ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
+TALOS_UPGRADE_DRAIN := true

@@ -40,11 +40,14 @@ TALOS_CONTROL_PLANE_NODES ?= mbhome-talos-cp-01 mbhome-talos-cp-02 mbhome-talos-
 TALOS_WORKER_NODES ?= mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos-worker-03
 TALOS_MACHINE_CONFIG ?= $(TALOS_CLUSTER_DIR)/nodes/$(TALOS_NODE_NAME).yaml
 TALOSCONFIG := $(CURDIR)/$(TALOS_CLUSTER_DIR)/talosconfig
+TALOS_UPGRADE_VERSION ?= v1.13.6
+TALOS_UPGRADE_IMAGE ?= ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
+TALOS_UPGRADE_DRAIN ?= true
 KUBECONFIG_FILE ?= $(CURDIR)/$(TALOS_CLUSTER_DIR)/kubeconfig
 CILIUM_DIR := infrastructure/kubernetes/cilium
 CILIUM_VERSION ?= 1.19.5
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health cilium-helm-repo cilium-install cilium-status cilium-uninstall proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade cilium-helm-repo cilium-install cilium-status cilium-uninstall proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -258,6 +261,23 @@ talos-health: ## Check Talos and Kubernetes control-plane health
 	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
 	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
 	TALOSCONFIG="$(TALOSCONFIG)" talosctl health --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)"
+
+talos-version: ## Show Talos client and node versions
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl version --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)"
+
+talos-upgrade-plan: ## Show the Talos upgrade command for the selected node
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@echo 'TALOSCONFIG="$(TALOSCONFIG)" talosctl upgrade --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)" --image "$(TALOS_UPGRADE_IMAGE)" --drain=$(TALOS_UPGRADE_DRAIN) --wait'
+
+talos-upgrade: ## Upgrade Talos on the selected node (usage: make talos-upgrade TALOS_NODE=10.20.30.70 TALOS_UPGRADE_VERSION=v1.13.6)
+	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
+	TALOSCONFIG="$(TALOSCONFIG)" talosctl upgrade --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)" --image "$(TALOS_UPGRADE_IMAGE)" --drain=$(TALOS_UPGRADE_DRAIN) --wait
 
 cilium-helm-repo: ## Add/update the Cilium Helm repository
 	helm repo add cilium https://helm.cilium.io

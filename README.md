@@ -736,6 +736,8 @@ Copy the generated `user@realm!tokenid=secret` value into the relevant
 Terraform vars file. Existing token secrets cannot be recovered; delete and
 recreate the token if the secret is lost.
 
+## Proxmox Terraform Workloads
+
 ### Create a disposable Proxmox smoke VM
 
 Before building the real Kubernetes layout, use the smoke VM Terraform stack to verify
@@ -811,200 +813,7 @@ Destroy it when done:
 make proxmox-smoke-vm-destroy
 ```
 
-### Create the first Talos VM
-
-The Kubernetes cluster will use Talos Linux instead of k3s-on-Linux. Talos keeps
-the node operating system declarative and appliance-like: Terraform owns the VM
-lifecycle, Talos owns the node OS configuration, and Kubernetes/Flux own the
-cluster workloads.
-
-The first step is a single Talos control-plane VM. This verifies Proxmox VM
-creation, shared storage, ISO boot, and network placement before expanding to a
-proper multi-node cluster.
-
-Create the local vars file:
-
-```bash
-cp infrastructure/terraform/proxmox.shared.example.tfvars \
-  infrastructure/terraform/proxmox.shared.local.tfvars
-
-cp infrastructure/terraform/proxmox-talos-vm/terraform.example.tfvars \
-  infrastructure/terraform/proxmox-talos-vm/terraform.local.tfvars
-```
-
-Edit `proxmox.shared.local.tfvars` for values shared by all Proxmox Terraform
-stacks:
-
-- `proxmox_api_url`: any clustered Proxmox node UI/API URL
-- `proxmox_api_token`: token in `user@realm!tokenid=secret` format
-- `proxmox_ssh_username`: SSH user for provider host-side operations
-- `vm_network_bridge`: usually `vmbr0`
-
-Edit `proxmox-talos-vm/terraform.local.tfvars` for the Talos VM values:
-
-- `proxmox_node`: Proxmox node that should create the VM
-- `iso_datastore_id`: storage where Proxmox should cache the Talos ISO, usually `proxmox-isos`
-- `vm_datastore_id`: storage for the Talos disk, usually `proxmox-vms`
-- `talos_iso_url`: pin this to a specific Talos release URL before building the real cluster
-- `vm_mac_address`: optional fixed MAC for DHCP reservations
-- `vm_agent_enabled`: enables the Proxmox QEMU guest-agent flag; Talos also needs a QEMU guest-agent system extension in the ISO/image for the agent to report data
-- `vm_efi_disk_type`: OVMF EFI vars disk type, usually `4m`
-
-Then create the VM:
-
-```bash
-make proxmox-talos-vm-init
-make proxmox-talos-vm-plan
-make proxmox-talos-vm-apply
-```
-
-The stack creates one VM named `mbhome-talos-cp-01` by default. It boots the
-Talos metal ISO and attaches a blank disk. The VM is not a usable Kubernetes
-node until Talos machine configuration is generated and applied with
-`talosctl`; that comes after the VM boot path and networking are verified.
-
-Install `talosctl` on the controller if it is not already available:
-
-```bash
-talosctl version --client
-```
-
-The Talos config inputs live under:
-
-```text
-infrastructure/talos/clusters/mbhome/
-```
-
-Committed files in that directory are patches. Generated files such as
-`secrets.yaml`, `controlplane.yaml`, `worker.yaml`, `talosconfig`, and
-`kubeconfig` are ignored because they contain cluster credentials.
-
-For the first VM, the committed control-plane patch assumes:
-
-- the install disk is `/dev/sda`
-- the first NIC is `eth0`
-- networking uses DHCP
-- automatic hostname generation is disabled
-- the static Talos hostname is `mbhome-talos-cp-01`
-
-After the VM boots the Talos ISO, get its IP address from the Proxmox console
-or DHCP server. Add it to `local.mk`, or pass it on each command:
-
-```make
-TALOS_CLUSTER_NAME := mbhome
-TALOS_CONTROL_PLANE_IP := 192.0.2.70
-TALOS_K8S_ENDPOINT := $(TALOS_CONTROL_PLANE_IP)
-TALOS_ENDPOINT := $(TALOS_CONTROL_PLANE_IP)
-TALOS_NODE := $(TALOS_CONTROL_PLANE_IP)
-TALOS_NODE_NAME := mbhome-talos-cp-01
-TALOS_CONTROL_PLANE_NODES := mbhome-talos-cp-01 mbhome-talos-cp-02 mbhome-talos-cp-03
-TALOS_WORKER_NODES := mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos-worker-03
-```
-
-`TALOS_K8S_ENDPOINT` is the Kubernetes API endpoint that gets written into the
-cluster config, usually the future HAProxy/load-balancer DNS name.
-`TALOS_ENDPOINT` is the Talos machine API endpoint used by `talosctl`; keep it
-as a real node IP unless you also proxy TCP/50000. `TALOS_NODE` is the IP of
-the machine being managed by the current command, and `TALOS_NODE_NAME` selects
-which generated machine config from `infrastructure/talos/clusters/mbhome/nodes/`
-should be applied.
-
-Confirm the disk and link names before applying a config:
-
-```bash
-make talos-inspect
-```
-
-If the output shows a different install disk or NIC, update
-`infrastructure/talos/clusters/mbhome/patches/controlplane.yaml` before
-continuing.
-
-Generate the Talos secrets and machine configs:
-
-```bash
-make talos-gen-secrets
-make talos-gen-config
-```
-
-`talos-gen-config` writes the base generated role configs plus per-node configs
-for the names in `TALOS_CONTROL_PLANE_NODES` and `TALOS_WORKER_NODES`.
-The per-node files are ignored under:
-
-```text
-infrastructure/talos/clusters/mbhome/nodes/
-```
-
-Apply the control-plane machine config to the booted Talos VM:
-
-```bash
-make talos-apply-insecure
-```
-
-The node will install Talos to disk and reboot. After it comes back, bootstrap
-Kubernetes once:
-
-```bash
-make talos-bootstrap
-```
-
-Fetch the kubeconfig and check health:
-
-```bash
-make talos-kubeconfig
-```
-
-Install Cilium before adding more nodes. The Talos patches in this repo disable
-the default CNI and kube-proxy, so the first control plane may sit in a
-not-ready state until Cilium is installed:
-
-```bash
-make cilium-helm-repo
-make cilium-install
-make cilium-status
-make talos-health
-```
-
-The Cilium values live at:
-
-```text
-infrastructure/kubernetes/cilium/values.yaml
-```
-
-They use Kubernetes IPAM, Talos' cgroup mount, KubePrism on localhost port
-`7445`, and Cilium kube-proxy replacement. The operator replica count starts at
-`1` for the first control-plane node; raise it after adding more control-plane
-nodes.
-
-After the first config has been applied, Talos requires client certificates.
-Use the authenticated target for later control-plane config changes:
-
-```bash
-make talos-apply
-```
-
-To apply a future node, set both the node IP and node config name:
-
-```bash
-make talos-apply-insecure \
-  TALOS_NODE=192.0.2.71 \
-  TALOS_NODE_NAME=mbhome-talos-cp-02
-
-make talos-apply-insecure \
-  TALOS_NODE=192.0.2.81 \
-  TALOS_NODE_NAME=mbhome-talos-worker-01
-```
-
-For a single-node learning cluster only, you can temporarily allow workloads on
-the control plane by changing `allowSchedulingOnControlPlanes` to `true` in
-`infrastructure/talos/clusters/mbhome/patches/controlplane.yaml`, then
-regenerating and reapplying the machine config. For the enterprise-shaped path,
-keep it `false` and add separate worker nodes next.
-
-Destroy the first Talos VM when done testing:
-
-```bash
-make proxmox-talos-vm-destroy
-```
+## Windows Server and AD DS
 
 ### Build a Windows Server template with Packer
 
@@ -1312,12 +1121,10 @@ handled after boot with PowerShell DSC or Ansible Windows modules over WinRM.
 
 This keeps Terraform from owning fragile, stateful domain-controller operations.
 
----
-
 ## Talos Kubernetes Cluster (Phase 2 — requires Proxmox)
 
 The old k3s placeholder has been replaced by a Talos-first Kubernetes path.
-Start with the single VM workflow above. Once that is stable, expand it into a
+Start with a single VM workflow. Once that is stable, expand it into a
 multi-node Talos control-plane/worker layout, pin the Talos ISO version,
 introduce a stable Kubernetes endpoint, bootstrap Kubernetes with `talosctl`,
 and then let Flux manage everything under `kubernetes/app-cluster/`.
@@ -1333,3 +1140,251 @@ HAProxy, set `TALOS_K8S_ENDPOINT := k8s-api.mbhome.biz` in `local.mk`, then
 regenerate/reapply the Talos config before adding more control-plane nodes.
 Keep `TALOS_ENDPOINT` pointed at a real control-plane node IP unless HAProxy is
 also proxying the Talos machine API on TCP/50000.
+
+### Create the first Talos VM
+
+The Kubernetes cluster will use Talos Linux instead of k3s-on-Linux. Talos keeps
+the node operating system declarative and appliance-like: Terraform owns the VM
+lifecycle, Talos owns the node OS configuration, and Kubernetes/Flux own the
+cluster workloads.
+
+The first step is a single Talos control-plane VM. This verifies Proxmox VM
+creation, shared storage, ISO boot, and network placement before expanding to a
+proper multi-node cluster.
+
+Create the local vars file:
+
+```bash
+cp infrastructure/terraform/proxmox.shared.example.tfvars \
+  infrastructure/terraform/proxmox.shared.local.tfvars
+
+cp infrastructure/terraform/proxmox-talos-vm/terraform.example.tfvars \
+  infrastructure/terraform/proxmox-talos-vm/terraform.local.tfvars
+```
+
+Edit `proxmox.shared.local.tfvars` for values shared by all Proxmox Terraform
+stacks:
+
+- `proxmox_api_url`: any clustered Proxmox node UI/API URL
+- `proxmox_api_token`: token in `user@realm!tokenid=secret` format
+- `proxmox_ssh_username`: SSH user for provider host-side operations
+- `vm_network_bridge`: usually `vmbr0`
+
+Edit `proxmox-talos-vm/terraform.local.tfvars` for the Talos VM values:
+
+- `proxmox_node`: Proxmox node that should create the VM
+- `iso_datastore_id`: storage where Proxmox should cache the Talos ISO, usually `proxmox-isos`
+- `vm_datastore_id`: storage for the Talos disk, usually `proxmox-vms`
+- `talos_iso_url`: pin this to a specific Talos release URL before building the real cluster
+- `vm_mac_address`: optional fixed MAC for DHCP reservations
+- `vm_agent_enabled`: enables the Proxmox QEMU guest-agent flag; Talos also needs a QEMU guest-agent system extension in the ISO/image for the agent to report data
+- `vm_efi_disk_type`: OVMF EFI vars disk type, usually `4m`
+
+Then create the VM:
+
+```bash
+make proxmox-talos-vm-init
+make proxmox-talos-vm-plan
+make proxmox-talos-vm-apply
+```
+
+The stack creates one VM named `mbhome-talos-cp-01` by default. It boots the
+Talos metal ISO and attaches a blank disk. The VM is not a usable Kubernetes
+node until Talos machine configuration is generated and applied with
+`talosctl`; that comes after the VM boot path and networking are verified.
+
+Install `talosctl` on the controller if it is not already available:
+
+```bash
+talosctl version --client
+```
+
+The Talos config inputs live under:
+
+```text
+infrastructure/talos/clusters/mbhome/
+```
+
+Committed files in that directory are patches. Generated files such as
+`secrets.yaml`, `controlplane.yaml`, `worker.yaml`, `talosconfig`, and
+`kubeconfig` are ignored because they contain cluster credentials.
+
+For the first VM, the committed control-plane patch assumes:
+
+- the install disk is `/dev/sda`
+- the first NIC is `eth0`
+- networking uses DHCP
+- automatic hostname generation is disabled
+- the static Talos hostname is `mbhome-talos-cp-01`
+
+After the VM boots the Talos ISO, get its IP address from the Proxmox console
+or DHCP server. Add it to `local.mk`, or pass it on each command:
+
+```make
+TALOS_CLUSTER_NAME := mbhome
+TALOS_CONTROL_PLANE_IP := 192.0.2.70
+TALOS_K8S_ENDPOINT := $(TALOS_CONTROL_PLANE_IP)
+TALOS_ENDPOINT := $(TALOS_CONTROL_PLANE_IP)
+TALOS_NODE := $(TALOS_CONTROL_PLANE_IP)
+TALOS_NODE_NAME := mbhome-talos-cp-01
+TALOS_CONTROL_PLANE_NODES := mbhome-talos-cp-01 mbhome-talos-cp-02 mbhome-talos-cp-03
+TALOS_WORKER_NODES := mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos-worker-03
+```
+
+`TALOS_K8S_ENDPOINT` is the Kubernetes API endpoint that gets written into the
+cluster config, usually the future HAProxy/load-balancer DNS name.
+`TALOS_ENDPOINT` is the Talos machine API endpoint used by `talosctl`; keep it
+as a real node IP unless you also proxy TCP/50000. `TALOS_NODE` is the IP of
+the machine being managed by the current command, and `TALOS_NODE_NAME` selects
+which generated machine config from `infrastructure/talos/clusters/mbhome/nodes/`
+should be applied.
+
+Confirm the disk and link names before applying a config:
+
+```bash
+make talos-inspect
+```
+
+If the output shows a different install disk or NIC, update
+`infrastructure/talos/clusters/mbhome/patches/controlplane.yaml` before
+continuing.
+
+Generate the Talos secrets and machine configs:
+
+```bash
+make talos-gen-secrets
+make talos-gen-config
+```
+
+`talos-gen-config` writes the base generated role configs plus per-node configs
+for the names in `TALOS_CONTROL_PLANE_NODES` and `TALOS_WORKER_NODES`.
+The per-node files are ignored under:
+
+```text
+infrastructure/talos/clusters/mbhome/nodes/
+```
+
+Apply the control-plane machine config to the booted Talos VM:
+
+```bash
+make talos-apply-insecure
+```
+
+The node will install Talos to disk and reboot. After it comes back, bootstrap
+Kubernetes once:
+
+```bash
+make talos-bootstrap
+```
+
+Fetch the kubeconfig and check health:
+
+```bash
+make talos-kubeconfig
+```
+
+Install Cilium before adding more nodes. The Talos patches in this repo disable
+the default CNI and kube-proxy, so the first control plane may sit in a
+not-ready state until Cilium is installed:
+
+```bash
+make cilium-helm-repo
+make cilium-install
+make cilium-status
+make talos-health
+```
+
+Check the installed Talos version:
+
+```bash
+make talos-version
+```
+
+Talos upgrades happen through the installed node, not by changing the boot ISO
+after Talos is installed. The Terraform `talos_iso_url` only controls the ISO
+used for bootstrapping/reinstalling a node. After installation, the VM normally
+boots from its disk; changing the ISO does not upgrade or downgrade the running
+Talos OS.
+
+If a freshly rebuilt node does not match the pinned `talos_iso_url`, check the
+Proxmox VM config and attached ISO first:
+
+```bash
+qm config <vmid> | grep -E '^(boot|ide2|sata|scsi)'
+```
+
+Also use a versioned `talos_iso_file_name` whenever you change
+`talos_iso_url`, so Proxmox does not keep reusing a generic cached
+`talos-metal-amd64.iso`.
+
+To test a Talos upgrade, choose the target version and run the upgrade against
+one node:
+
+```bash
+make talos-upgrade-plan \
+  TALOS_NODE=192.0.2.70 \
+  TALOS_UPGRADE_VERSION=v1.13.6
+
+make talos-upgrade \
+  TALOS_NODE=192.0.2.70 \
+  TALOS_UPGRADE_VERSION=v1.13.6
+```
+
+For a single-control-plane lab cluster, set `TALOS_UPGRADE_DRAIN=false` if the
+drain step blocks because there is no worker node to receive workloads:
+
+```bash
+make talos-upgrade \
+  TALOS_NODE=192.0.2.70 \
+  TALOS_UPGRADE_VERSION=v1.13.6 \
+  TALOS_UPGRADE_DRAIN=false
+```
+
+Then verify:
+
+```bash
+make talos-version
+make talos-health
+```
+
+The Cilium values live at:
+
+```text
+infrastructure/kubernetes/cilium/values.yaml
+```
+
+They use Kubernetes IPAM, Talos' cgroup mount, KubePrism on localhost port
+`7445`, and Cilium kube-proxy replacement. The operator replica count starts at
+`1` for the first control-plane node; raise it after adding more control-plane
+nodes.
+
+After the first config has been applied, Talos requires client certificates.
+Use the authenticated target for later control-plane config changes:
+
+```bash
+make talos-apply
+```
+
+To apply a future node, set both the node IP and node config name:
+
+```bash
+make talos-apply-insecure \
+  TALOS_NODE=192.0.2.71 \
+  TALOS_NODE_NAME=mbhome-talos-cp-02
+
+make talos-apply-insecure \
+  TALOS_NODE=192.0.2.81 \
+  TALOS_NODE_NAME=mbhome-talos-worker-01
+```
+
+For a single-node learning cluster only, you can temporarily allow workloads on
+the control plane by changing `allowSchedulingOnControlPlanes` to `true` in
+`infrastructure/talos/clusters/mbhome/patches/controlplane.yaml`, then
+regenerating and reapplying the machine config. For the enterprise-shaped path,
+keep it `false` and add separate worker nodes next.
+
+Destroy the first Talos VM when done testing:
+
+```bash
+make proxmox-talos-vm-destroy
+```
