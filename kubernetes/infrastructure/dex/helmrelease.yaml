@@ -64,9 +64,10 @@ spec:
           id: ad
           name: Active Directory
           config:
-            host: mbhome.biz:636
-            insecureNoSSL: false
-            insecureSkipVerify: true
+            # Temporary: prove the OIDC flow before AD DS LDAPS certificates are
+            # installed. Switch back to LDAPS on 636 once the DCs serve TLS.
+            host: mbhome.biz:389
+            insecureNoSSL: true
             bindDN: "{{ .Env.DEX_LDAP_BIND_DN }}"
             bindPW: "{{ .Env.DEX_LDAP_BIND_PASSWORD }}"
             usernamePrompt: Email Address
