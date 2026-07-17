@@ -354,8 +354,10 @@ dex-ldap-secret: ## Create/update the Dex AD LDAP bind secret from DEX_LDAP_BIND
 dex-status: ## Show Dex pods, route, RBAC bindings, and OIDC discovery
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex get pods,svc,httproute
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex get deployment,replicaset
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get helmrelease dex
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get clusterrolebinding oidc-k8s-admins-cluster-admin oidc-k8s-viewers-view
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex get events --sort-by=.lastTimestamp | tail -20
 	@curl -fsS https://dex.apps.mbhome.biz/.well-known/openid-configuration | sed -n '1,20p'
 
 nfs-csi-status: ## Show Flux-managed NFS CSI pods and StorageClasses
