@@ -23,3 +23,9 @@ zones:
         value: 10.20.30.50
         ttl: 300
         state: present
+      
+      - name: "*.apps"
+        type: A
+        value: 10.20.30.200 #Cilium internal Gateway
+        ttl: 300
+        state: present  

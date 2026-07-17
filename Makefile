@@ -293,7 +293,7 @@ gateway-api-crds-install: ## Install or upgrade standard Gateway API CRDs before
 
 gateway-api-status: ## Show Gateway API CRDs, classes, and gateways
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get crd gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get crd gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io grpcroutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get gatewayclass
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get gateways.gateway.networking.k8s.io --all-namespaces -o wide
 
@@ -310,6 +310,10 @@ cilium-install: ## Install or upgrade Cilium on the Talos Kubernetes cluster
 		--namespace kube-system \
 		--kubeconfig "$(KUBECONFIG_FILE)" \
 		--values "$(CILIUM_DIR)/values.yaml"
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout restart deployment/cilium-operator
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout restart ds/cilium
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout status deployment/cilium-operator --timeout=5m
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout status ds/cilium --timeout=5m
 
 cilium-status: ## Show Cilium pods and Kubernetes node readiness
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
