@@ -1,0 +1,14 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apps-mbhome-biz
+  namespace: gateway-system
+spec:
+  secretName: apps-mbhome-biz-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "*.apps.mbhome.biz"

@@ -19,3 +19,14 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https
+      hostname: "*.apps.mbhome.biz"
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: apps-mbhome-biz-tls
+      allowedRoutes:
+        namespaces:
+          from: All

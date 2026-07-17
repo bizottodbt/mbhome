@@ -7,6 +7,7 @@ the internal Gateway:
 
 ```text
 http://whoami.apps.mbhome.biz
+https://whoami.apps.mbhome.biz
 ```
 
 Validate after Flux reconciles:
@@ -16,4 +17,5 @@ kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
   -n whoami get deploy,svc,httproute
 
 curl -i http://whoami.apps.mbhome.biz
+curl -Ik https://whoami.apps.mbhome.biz
 ```

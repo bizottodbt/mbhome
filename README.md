@@ -1538,6 +1538,41 @@ before testing HTTPRoutes. This keeps the first Gateway internal-only; later
 externally reachable services can be added with Cloudflare Tunnel without
 changing the internal Gateway model.
 
+cert-manager is managed by Flux under:
+
+```text
+kubernetes/infrastructure/cert-manager/
+```
+
+Install cert-manager CRDs before Flux sees cert-manager custom resources:
+
+```bash
+make cert-manager-crds-install
+```
+
+Create a scoped Cloudflare API token with permission to edit DNS for the
+`mbhome.biz` zone, then store it as a Kubernetes Secret. The token is not
+committed to Git:
+
+```bash
+export CLOUDFLARE_API_TOKEN=...
+make cert-manager-cloudflare-secret
+```
+
+The committed ClusterIssuers use Let's Encrypt DNS-01 through Cloudflare and
+request the wildcard certificate `*.apps.mbhome.biz`. The TLS Secret is created
+in the Gateway namespace as:
+
+```text
+gateway-system/apps-mbhome-biz-tls
+```
+
+Check issuance with:
+
+```bash
+make cert-manager-status
+```
+
 After Flux is healthy, additional platform components should be added under the
 cluster path instead of installed by hand.
 
