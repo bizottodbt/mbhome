@@ -57,7 +57,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status dex-ldap-secret dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -343,6 +343,20 @@ cert-manager-status: ## Show cert-manager pods, issuers, and wildcard certificat
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get clusterissuers.cert-manager.io
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n gateway-system get certificates.cert-manager.io,certificaterequests.cert-manager.io,orders.acme.cert-manager.io,challenges.acme.cert-manager.io || true
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n gateway-system get secret apps-mbhome-biz-tls || true
+
+dex-ldap-secret: ## Create/update the Dex AD LDAP bind secret from DEX_LDAP_BIND_DN and DEX_LDAP_BIND_PASSWORD
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$DEX_LDAP_BIND_DN" || (echo "Export DEX_LDAP_BIND_DN before running this target"; exit 1)
+	@test -n "$$DEX_LDAP_BIND_PASSWORD" || (echo "Export DEX_LDAP_BIND_PASSWORD before running this target"; exit 1)
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" create namespace dex --dry-run=client -o yaml | kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply -f -
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex create secret generic dex-ldap-bind --from-literal=DEX_LDAP_BIND_DN="$$DEX_LDAP_BIND_DN" --from-literal=DEX_LDAP_BIND_PASSWORD="$$DEX_LDAP_BIND_PASSWORD" --dry-run=client -o yaml | kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply -f -
+
+dex-status: ## Show Dex pods, route, RBAC bindings, and OIDC discovery
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex get pods,svc,httproute
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get helmrelease dex
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get clusterrolebinding oidc-k8s-admins-cluster-admin oidc-k8s-viewers-view
+	@curl -fsS https://dex.apps.mbhome.biz/.well-known/openid-configuration | sed -n '1,20p'
 
 nfs-csi-status: ## Show Flux-managed NFS CSI pods and StorageClasses
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)

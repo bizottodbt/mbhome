@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - cilium
   - cert-manager
+  - dex
   - nfs-csi
   - gateway-api
   - minio

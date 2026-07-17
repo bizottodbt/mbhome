@@ -1577,6 +1577,37 @@ cert-manager is configured to use public recursive resolvers for DNS-01
 self-checks. This avoids false propagation failures when the cluster's internal
 DNS is authoritative for `mbhome.biz` or forwards through AD.
 
+Dex is managed by Flux under:
+
+```text
+kubernetes/infrastructure/dex/
+```
+
+It exposes an internal OIDC issuer at:
+
+```text
+https://dex.apps.mbhome.biz
+```
+
+Dex uses AD DS over LDAPS and expects a non-interactive LDAP bind identity. The
+bind DN and password are stored as a Kubernetes Secret, not committed to Git:
+
+```bash
+export DEX_LDAP_BIND_DN='CN=svc_dex,OU=Service Accounts,OU=home,DC=mbhome,DC=biz'
+export DEX_LDAP_BIND_PASSWORD='...'
+make dex-ldap-secret
+```
+
+After Flux deploys Dex, check the release and OIDC discovery endpoint:
+
+```bash
+make dex-status
+```
+
+The initial RBAC bindings expect AD groups named `k8s-admins` and
+`k8s-viewers`. Kubernetes will see them as `oidc:k8s-admins` and
+`oidc:k8s-viewers` after the Talos API server OIDC settings are applied.
+
 After Flux is healthy, additional platform components should be added under the
 cluster path instead of installed by hand.
 
