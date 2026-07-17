@@ -1,0 +1,19 @@
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: mbhome-lan
+spec:
+  blocks:
+    - start: "10.20.30.200"
+      stop: "10.20.30.209"
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: mbhome-lan
+spec:
+  interfaces:
+    - ^ens18$
+  loadBalancerIPs: true
+  externalIPs: false

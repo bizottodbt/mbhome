@@ -11,7 +11,7 @@ machine:
       - 10.20.30.12
       - 10.20.30.1
     interfaces:
-      - interface: eth0
+      - interface: ens18
         dhcp: true
 cluster:
   allowSchedulingOnControlPlanes: false

@@ -46,6 +46,8 @@ TALOS_UPGRADE_DRAIN ?= true
 KUBECONFIG_FILE ?= $(CURDIR)/$(TALOS_CLUSTER_DIR)/kubeconfig
 CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
+GATEWAY_API_VERSION ?= v1.4.1
+GATEWAY_API_STANDARD_INSTALL_URL := https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
 FLUX_CLUSTER_PATH ?= kubernetes/clusters/mbhome
 FLUX_GITHUB_OWNER ?= bizottodbt
 FLUX_GITHUB_REPOSITORY ?= mbhome
@@ -53,7 +55,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade cilium-helm-repo cilium-install cilium-status cilium-uninstall nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-uninstall nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -285,6 +287,16 @@ talos-upgrade: ## Upgrade Talos on the selected node (usage: make talos-upgrade 
 	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
 	TALOSCONFIG="$(TALOSCONFIG)" talosctl upgrade --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)" --image "$(TALOS_UPGRADE_IMAGE)" --drain=$(TALOS_UPGRADE_DRAIN) --wait
 
+gateway-api-crds-install: ## Install or upgrade standard Gateway API CRDs before enabling Cilium Gateway API
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply --server-side -f "$(GATEWAY_API_STANDARD_INSTALL_URL)"
+
+gateway-api-status: ## Show Gateway API CRDs, classes, and gateways
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get crd gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get gatewayclass
+	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get gateways.gateway.networking.k8s.io --all-namespaces -o wide
+
 cilium-helm-repo: ## Add/update the Cilium Helm repository
 	helm repo add cilium https://helm.cilium.io
 	helm repo update cilium
@@ -292,6 +304,7 @@ cilium-helm-repo: ## Add/update the Cilium Helm repository
 cilium-install: ## Install or upgrade Cilium on the Talos Kubernetes cluster
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -f "$(CILIUM_DIR)/values.yaml" || (echo "Missing $(CILIUM_DIR)/values.yaml"; exit 1)
+	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" get crd gateways.gateway.networking.k8s.io >/dev/null || (echo "Run make gateway-api-crds-install before make cilium-install"; exit 1)
 	helm upgrade --install cilium cilium/cilium \
 		--version "$(CILIUM_VERSION)" \
 		--namespace kube-system \

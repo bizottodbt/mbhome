@@ -1281,7 +1281,7 @@ Committed files in that directory are patches. Generated files such as
 For the first VM, the committed control-plane patch assumes:
 
 - the install disk is `/dev/sda`
-- the first NIC is `eth0`
+- the management NIC is `ens18` on the Proxmox Talos VMs
 - networking uses DHCP
 - automatic hostname generation is disabled
 - the static Talos hostname is `mbhome-talos-cp-01`
@@ -1357,6 +1357,7 @@ the default CNI and kube-proxy, so the first control plane may sit in a
 not-ready state until Cilium is installed:
 
 ```bash
+make gateway-api-crds-install
 make cilium-helm-repo
 make cilium-install
 make cilium-status
@@ -1423,9 +1424,18 @@ kubernetes/infrastructure/cilium/values.yaml
 ```
 
 They use Kubernetes IPAM, Talos' cgroup mount, KubePrism on localhost port
-`7445`, and Cilium kube-proxy replacement. The operator replica count starts at
-`1` for the first control-plane node; raise it after adding more control-plane
-nodes.
+`7445`, Cilium kube-proxy replacement, Gateway API support, and L2
+announcements for on-LAN LoadBalancer services. The operator replica count
+starts at `1` for the first control-plane node; raise it after adding more
+control-plane nodes.
+
+Gateway API CRDs are installed explicitly by `make gateway-api-crds-install`
+because they are cluster-scoped APIs and need to exist before Cilium's Gateway
+controller is enabled. Check them with:
+
+```bash
+make gateway-api-status
+```
 
 ### Bootstrap Flux GitOps
 
@@ -1486,8 +1496,8 @@ kubernetes/clusters/mbhome
 ```
 
 Flux writes its own controller manifests under `flux-system/` and reconciles the
-committed `infrastructure` Kustomization before the `apps` Kustomization. The
-first GitOps-managed infrastructure item is NFS CSI:
+committed `infrastructure` Kustomization before the `apps` Kustomization. NFS
+CSI is managed here:
 
 ```text
 kubernetes/infrastructure/nfs-csi/
@@ -1508,8 +1518,28 @@ parity/mover behavior. The CSI driver creates PVC subdirectories inside those
 exports, but it does not create or export the top-level shares.
 
 Cilium remains a bootstrap dependency for now because Flux needs a working CNI
-before its controllers can run. After Flux is healthy, additional platform
-components should be added under the cluster path instead of installed by hand.
+before its controllers can run. Cilium values are still applied by
+`make cilium-install`, while Cilium custom resources such as LB IPAM pools and
+L2 announcement policies are reconciled by Flux:
+
+```text
+kubernetes/infrastructure/cilium/
+```
+
+The current internal LoadBalancer pool is `10.20.30.200-10.20.30.209`, and the
+internal Gateway is pinned to `10.20.30.200` for `*.apps.mbhome.biz`:
+
+```text
+kubernetes/infrastructure/gateway-api/
+```
+
+Create an internal DNS wildcard such as `*.apps.mbhome.biz -> 10.20.30.200`
+before testing HTTPRoutes. This keeps the first Gateway internal-only; later
+externally reachable services can be added with Cloudflare Tunnel without
+changing the internal Gateway model.
+
+After Flux is healthy, additional platform components should be added under the
+cluster path instead of installed by hand.
 
 Check Flux reconciliation:
 
