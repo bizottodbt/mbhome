@@ -1,0 +1,160 @@
+---
+- name: Configure AD DS LDAPS certificates
+  hosts: windows_domain_controllers
+  gather_facts: false
+  serial: 1
+
+  vars:
+    _windows_ad_ldaps_domain_name: "{{ windows_ad_domain_name }}"
+    _windows_ad_ldaps_hostname: "{{ windows_hostname | default(inventory_hostname.split('.')[0]) }}"
+    _windows_ad_ldaps_fqdn: "{{ _windows_ad_ldaps_hostname }}.{{ _windows_ad_ldaps_domain_name }}"
+    _windows_ad_ldaps_dns_names: >-
+      {{ windows_ad_ldaps_dns_names
+         | default([_windows_ad_ldaps_fqdn, _windows_ad_ldaps_hostname]) }}
+    _windows_ad_ldaps_cert_years: "{{ windows_ad_ldaps_cert_years | default(3) | int }}"
+    _windows_ad_ldaps_restart_ntds: "{{ windows_ad_ldaps_restart_ntds | default(true) | bool }}"
+
+  tasks:
+    - name: Validate AD LDAPS variables
+      ansible.builtin.assert:
+        that:
+          - _windows_ad_ldaps_domain_name is defined
+          - _windows_ad_ldaps_domain_name | length > 0
+          - _windows_ad_ldaps_dns_names | length > 0
+          - _windows_ad_ldaps_cert_years | int >= 1
+        fail_msg: >-
+          Set windows_ad_domain_name for windows_domain_controllers and make
+          sure each host has windows_hostname or a usable inventory hostname.
+
+    - name: Wait for WinRM
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ windows_wait_timeout | default(600) }}"
+
+    - name: Install or confirm AD DS LDAPS certificate
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+
+        $DnsNamesJson = @'
+        {{ _windows_ad_ldaps_dns_names | to_json }}
+        '@
+        $DnsNames = @((ConvertFrom-Json -InputObject $DnsNamesJson) |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+          ForEach-Object { $_.Trim() } |
+          Select-Object -Unique)
+
+        if ($DnsNames.Count -eq 0) {
+          throw "At least one LDAPS DNS name is required."
+        }
+
+        $ServerAuthOid = "1.3.6.1.5.5.7.3.1"
+        $MinimumLifetime = (Get-Date).AddDays(30)
+        $Changed = $false
+        $RestartedNtds = $false
+
+        function Test-TcpPort {
+          param(
+            [Parameter(Mandatory=$true)][string]$HostName,
+            [Parameter(Mandatory=$true)][int]$Port
+          )
+
+          $Client = New-Object System.Net.Sockets.TcpClient
+          try {
+            $Connect = $Client.BeginConnect($HostName, $Port, $null, $null)
+            if (-not $Connect.AsyncWaitHandle.WaitOne(1000, $false)) {
+              return $false
+            }
+            $Client.EndConnect($Connect)
+            return $true
+          } catch {
+            return $false
+          } finally {
+            $Client.Close()
+          }
+        }
+
+        function Test-CertHasServerAuth {
+          param([Parameter(Mandatory=$true)]$Certificate)
+
+          foreach ($Usage in @($Certificate.EnhancedKeyUsageList)) {
+            if ($Usage.Value -eq $ServerAuthOid -or $Usage.FriendlyName -eq "Server Authentication") {
+              return $true
+            }
+          }
+
+          return $false
+        }
+
+        function Test-CertHasDnsNames {
+          param(
+            [Parameter(Mandatory=$true)]$Certificate,
+            [Parameter(Mandatory=$true)][string[]]$RequiredDnsNames
+          )
+
+          $CertDnsNames = @($Certificate.DnsNameList | ForEach-Object { $_.Unicode })
+          foreach ($Name in $RequiredDnsNames) {
+            if ($CertDnsNames -notcontains $Name) {
+              return $false
+            }
+          }
+
+          return $true
+        }
+
+        $Existing = Get-ChildItem Cert:\LocalMachine\My |
+          Where-Object {
+            $_.HasPrivateKey -and
+            $_.NotAfter -gt $MinimumLifetime -and
+            (Test-CertHasServerAuth -Certificate $_) -and
+            (Test-CertHasDnsNames -Certificate $_ -RequiredDnsNames $DnsNames)
+          } |
+          Sort-Object NotAfter -Descending |
+          Select-Object -First 1
+
+        if ($null -eq $Existing) {
+          $Existing = New-SelfSignedCertificate `
+            -DnsName $DnsNames `
+            -CertStoreLocation Cert:\LocalMachine\My `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -KeyExportPolicy NonExportable `
+            -KeySpec KeyExchange `
+            -KeyUsage DigitalSignature,KeyEncipherment `
+            -TextExtension @("2.5.29.37={text}$ServerAuthOid") `
+            -NotAfter (Get-Date).AddYears({{ _windows_ad_ldaps_cert_years }})
+          $Changed = $true
+        }
+
+        $LdapsListening = Test-TcpPort -HostName "127.0.0.1" -Port 636
+        if (-not $LdapsListening -and "{{ _windows_ad_ldaps_restart_ntds | ternary('true', 'false') }}" -eq "true") {
+          Restart-Service -Name NTDS -Force
+          $RestartedNtds = $true
+          $Changed = $true
+        }
+
+        $Deadline = (Get-Date).AddMinutes(3)
+        do {
+          if (Test-TcpPort -HostName "127.0.0.1" -Port 636) {
+            $LdapsListening = $true
+            break
+          }
+          Start-Sleep -Seconds 5
+        } while ((Get-Date) -lt $Deadline)
+
+        if (-not $LdapsListening) {
+          throw "LDAPS is not listening on TCP/636 after installing certificate $($Existing.Thumbprint). A DC reboot may be required."
+        }
+
+        Write-Output "CHANGED=$Changed"
+        Write-Output "RESTARTED_NTDS=$RestartedNtds"
+        Write-Output "LDAPS_CERT_THUMBPRINT=$($Existing.Thumbprint)"
+        Write-Output "LDAPS_CERT_SUBJECT=$($Existing.Subject)"
+        Write-Output "LDAPS_CERT_NOT_AFTER=$($Existing.NotAfter.ToString('o'))"
+      register: _windows_ad_ldaps
+      changed_when: "'CHANGED=True' in _windows_ad_ldaps.stdout"
+
+    - name: Confirm LDAPS from Ansible controller
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 636
+        timeout: "{{ windows_ad_ldaps_wait_timeout | default(60) }}"
+      delegate_to: localhost

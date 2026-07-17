@@ -12,9 +12,9 @@ Dex currently runs one replica because the deployment uses `storage.type:
 memory`. Multiple replicas with memory storage can split one browser login flow
 across pods and return `Bad Request: Requested resource does not exist`.
 
-The AD connector is temporarily configured for plain LDAP on port `389` to prove
-the Kubernetes OIDC flow before AD DS LDAPS certificates are installed. Switch
-it back to LDAPS on port `636` before treating this as production-grade.
+The AD connector uses LDAPS on port `636`. It currently skips certificate
+verification while the DCs use lab self-signed LDAPS certificates; replace that
+with `rootCAData` after AD CS issues trusted DC certificates.
 
 Create the LDAP bind secret before Flux reconciles Dex:
 

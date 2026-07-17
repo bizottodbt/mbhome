@@ -1027,6 +1027,19 @@ windows_ad_connection_user: Administrator@ad.example.test
 windows_ad_connection_password: CHANGE_ME_DOMAIN_ADMIN
 ```
 
+Install lab LDAPS certificates on the DCs before wiring LDAP-backed services
+such as Dex. This creates a self-signed Server Authentication certificate in
+each DC's LocalMachine certificate store, restarts AD DS only if TCP/636 is not
+already listening, and confirms LDAPS from the Ansible controller:
+
+```bash
+make windows-ad-ldaps
+```
+
+These certificates are enough for encrypted LDAPS with clients that skip
+certificate verification. Replace this with AD CS-issued DC certificates before
+treating LDAPS as production-grade.
+
 Validate the domain from either DC after replica promotion:
 
 ```powershell

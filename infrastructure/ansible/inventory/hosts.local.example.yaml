@@ -166,6 +166,7 @@ all:
         windows_ad_domain_admin_password: CHANGE_ME_DOMAIN_ADMIN
         windows_ad_domain_mode: WinThreshold
         windows_ad_forest_mode: WinThreshold
+        windows_ad_ldaps_cert_years: 3
         windows_dns_servers:
           - 192.0.2.1
       hosts:
@@ -173,11 +174,20 @@ all:
           ansible_host: 192.0.2.61
           windows_hostname: mbhome-ad-01
           windows_static_ip: 192.0.2.61
+          # Optional override. Defaults to:
+          # - mbhome-ad-01.ad.example.test
+          # - mbhome-ad-01
+          # windows_ad_ldaps_dns_names:
+          #   - mbhome-ad-01.ad.example.test
+          #   - mbhome-ad-01
 
         mbhome-ad-02:
           ansible_host: 192.0.2.62
           windows_hostname: mbhome-ad-02
           windows_static_ip: 192.0.2.62
+          # windows_ad_ldaps_dns_names:
+          #   - mbhome-ad-02.ad.example.test
+          #   - mbhome-ad-02
 
     windows_ad_primary:
       hosts:
