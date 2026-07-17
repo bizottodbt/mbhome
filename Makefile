@@ -53,7 +53,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade cilium-helm-repo cilium-install cilium-status cilium-uninstall nfs-csi-status flux-check flux-bootstrap-github flux-status flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade cilium-helm-repo cilium-install cilium-status cilium-uninstall nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -334,9 +334,27 @@ flux-bootstrap-github: ## Bootstrap Flux from this GitHub repo
 flux-status: ## Show Flux reconciliation state
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	flux get sources git --kubeconfig "$(KUBECONFIG_FILE)"
-	flux get sources helm --kubeconfig "$(KUBECONFIG_FILE)"
-	flux get kustomizations --kubeconfig "$(KUBECONFIG_FILE)"
-	flux get helmreleases --all-namespaces --kubeconfig "$(KUBECONFIG_FILE)"
+	flux get sources helm --kubeconfig "$(KUBECONFIG_FILE)" || true
+	flux get kustomizations --kubeconfig "$(KUBECONFIG_FILE)" || true
+	flux get helmreleases --all-namespaces --kubeconfig "$(KUBECONFIG_FILE)" || true
+
+flux-tree: ## Show Flux-managed layers and applied revisions
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@echo "==> Git sources"
+	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get gitrepositories.source.toolkit.fluxcd.io \
+		-o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.artifact.revision,URL:.spec.url' || true
+	@echo ""
+	@echo "==> Flux Kustomizations"
+	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get kustomizations.kustomize.toolkit.fluxcd.io \
+		-o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,PATH:.spec.path,DEPENDS-ON:.spec.dependsOn[*].name' || true
+	@echo ""
+	@echo "==> Helm sources"
+	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get helmrepositories.source.toolkit.fluxcd.io \
+		-o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.artifact.revision,URL:.spec.url' || true
+	@echo ""
+	@echo "==> Helm releases"
+	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
+		-o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,CHART:.spec.chart.spec.chart,TARGET:.spec.targetNamespace' || true
 
 flux-reconcile: ## Force Flux to pull Git and reconcile mbhome infrastructure
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)

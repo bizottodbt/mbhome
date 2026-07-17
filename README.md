@@ -1471,7 +1471,7 @@ the cluster.
 
 For a fine-grained GitHub PAT on an existing repository, use:
 
-- `Administration`: read-only
+- `Administration`: read and write
 - `Contents`: read and write
 - `Metadata`: read-only
 
