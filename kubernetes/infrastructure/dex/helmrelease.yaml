@@ -27,7 +27,9 @@ spec:
     envFrom:
       - secretRef:
           name: dex-ldap-bind
-    replicaCount: 2
+    # Dex memory storage keeps login request state inside one pod. Use a single
+    # replica until Dex is moved to a shared storage backend.
+    replicaCount: 1
     podSecurityContext:
       runAsNonRoot: true
       runAsUser: 65532

@@ -8,6 +8,10 @@ This deployment is internal-only:
 https://dex.apps.mbhome.biz
 ```
 
+Dex currently runs one replica because the deployment uses `storage.type:
+memory`. Multiple replicas with memory storage can split one browser login flow
+across pods and return `Bad Request: Requested resource does not exist`.
+
 Create the LDAP bind secret before Flux reconciles Dex:
 
 ```bash
