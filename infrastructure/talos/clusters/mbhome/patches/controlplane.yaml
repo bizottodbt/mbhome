@@ -21,3 +21,11 @@ cluster:
       name: none
   proxy:
     disabled: true
+  apiServer:
+    extraArgs:
+      oidc-issuer-url: https://dex.apps.mbhome.biz
+      oidc-client-id: kubernetes
+      oidc-username-claim: email
+      oidc-groups-claim: groups
+      oidc-username-prefix: "oidc:"
+      oidc-groups-prefix: "oidc:"
