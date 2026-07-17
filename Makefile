@@ -44,13 +44,16 @@ TALOS_UPGRADE_VERSION ?= v1.13.6
 TALOS_UPGRADE_IMAGE ?= ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
 TALOS_UPGRADE_DRAIN ?= true
 KUBECONFIG_FILE ?= $(CURDIR)/$(TALOS_CLUSTER_DIR)/kubeconfig
-CILIUM_DIR := infrastructure/kubernetes/cilium
+CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
-NFS_CSI_DIR := infrastructure/kubernetes/nfs-csi
-NFS_CSI_VERSION ?= 4.13.4
-NFS_CSI_STORAGECLASSES ?= $(NFS_CSI_DIR)/storageclasses.yaml
+FLUX_CLUSTER_PATH ?= kubernetes/clusters/mbhome
+FLUX_GITHUB_OWNER ?= bizottodbt
+FLUX_GITHUB_REPOSITORY ?= mbhome
+FLUX_GIT_BRANCH ?= main
+FLUX_GITHUB_PERSONAL ?= true
+FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade cilium-helm-repo cilium-install cilium-status cilium-uninstall nfs-csi-helm-repo nfs-csi-install nfs-csi-storageclasses nfs-csi-status nfs-csi-uninstall proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade cilium-helm-repo cilium-install cilium-status cilium-uninstall nfs-csi-status flux-check flux-bootstrap-github flux-status flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -305,33 +308,40 @@ cilium-uninstall: ## Remove Cilium from the cluster
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	helm uninstall cilium --namespace kube-system --kubeconfig "$(KUBECONFIG_FILE)"
 
-nfs-csi-helm-repo: ## Add/update the Kubernetes CSI NFS Helm repository
-	helm repo add csi-driver-nfs https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
-	helm repo update csi-driver-nfs
-
-nfs-csi-install: ## Install or upgrade the Kubernetes CSI NFS driver
-	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	@test -f "$(NFS_CSI_DIR)/values.yaml" || (echo "Missing $(NFS_CSI_DIR)/values.yaml"; exit 1)
-	helm upgrade --install csi-driver-nfs csi-driver-nfs/csi-driver-nfs \
-		--version "$(NFS_CSI_VERSION)" \
-		--namespace kube-system \
-		--kubeconfig "$(KUBECONFIG_FILE)" \
-		--values "$(NFS_CSI_DIR)/values.yaml"
-
-nfs-csi-storageclasses: ## Apply NFS CSI StorageClasses
-	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	@test -f "$(NFS_CSI_STORAGECLASSES)" || (echo "Missing $(NFS_CSI_STORAGECLASSES)"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply -f "$(NFS_CSI_STORAGECLASSES)"
-
-nfs-csi-status: ## Show NFS CSI pods and StorageClasses
+nfs-csi-status: ## Show Flux-managed NFS CSI pods and StorageClasses
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l app=csi-nfs-controller -o wide
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l app=csi-nfs-node -o wide
 	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get storageclass
 
-nfs-csi-uninstall: ## Remove NFS CSI driver from the cluster
+flux-check: ## Check Flux prerequisites against the Kubernetes cluster
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	helm uninstall csi-driver-nfs --namespace kube-system --kubeconfig "$(KUBECONFIG_FILE)"
+	flux check --pre --kubeconfig "$(KUBECONFIG_FILE)"
+
+flux-bootstrap-github: ## Bootstrap Flux from this GitHub repo
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$GITHUB_TOKEN" || (echo "Export GITHUB_TOKEN with repo admin access before bootstrapping Flux"; exit 1)
+	@test -z "$$(git status --porcelain -- kubernetes)" || (echo "Commit and push kubernetes before bootstrapping Flux"; exit 1)
+	flux bootstrap github \
+		--kubeconfig "$(KUBECONFIG_FILE)" \
+		--owner="$(FLUX_GITHUB_OWNER)" \
+		--repository="$(FLUX_GITHUB_REPOSITORY)" \
+		--branch="$(FLUX_GIT_BRANCH)" \
+		--path="$(FLUX_CLUSTER_PATH)" \
+		--private="$(FLUX_GITHUB_PRIVATE)" \
+		$(if $(filter true,$(FLUX_GITHUB_PERSONAL)),--personal,)
+
+flux-status: ## Show Flux reconciliation state
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	flux get sources git --kubeconfig "$(KUBECONFIG_FILE)"
+	flux get sources helm --kubeconfig "$(KUBECONFIG_FILE)"
+	flux get kustomizations --kubeconfig "$(KUBECONFIG_FILE)"
+	flux get helmreleases --all-namespaces --kubeconfig "$(KUBECONFIG_FILE)"
+
+flux-reconcile: ## Force Flux to pull Git and reconcile mbhome infrastructure
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	flux reconcile source git flux-system --namespace flux-system --kubeconfig "$(KUBECONFIG_FILE)"
+	flux reconcile kustomization infrastructure --namespace flux-system --with-source --kubeconfig "$(KUBECONFIG_FILE)"
 
 proxmox-ad-vms-init: ## Initialize Terraform for AD/domain-controller VM shells
 	cd $(PROXMOX_AD_TF_DIR) && terraform init

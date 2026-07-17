@@ -2,7 +2,7 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
-  name: mbhome
+  name: flux-system
   namespace: flux-system
 spec:
   interval: 1m
@@ -19,8 +19,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/app-cluster/flux-system
+  path: ./kubernetes/clusters/mbhome
   prune: true
   sourceRef:
     kind: GitRepository
-    name: mbhome
+    name: flux-system

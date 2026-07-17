@@ -24,4 +24,12 @@ TALOS_WORKER_NODES := mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos
 TALOS_UPGRADE_VERSION := v1.13.6
 TALOS_UPGRADE_IMAGE := ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
 TALOS_UPGRADE_DRAIN := true
-NFS_CSI_VERSION := 4.13.4
+
+# Flux GitOps bootstrap. Export GITHUB_TOKEN in your shell before running
+# `make flux-bootstrap-github`.
+FLUX_CLUSTER_PATH := kubernetes/clusters/mbhome
+FLUX_GITHUB_OWNER := bizottodbt
+FLUX_GITHUB_REPOSITORY := mbhome
+FLUX_GIT_BRANCH := main
+FLUX_GITHUB_PERSONAL := true
+FLUX_GITHUB_PRIVATE := false

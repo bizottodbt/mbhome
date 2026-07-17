@@ -7,12 +7,12 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "false"
 provisioner: nfs.csi.k8s.io
 parameters:
-  server: 192.0.2.50
+  server: 10.20.90.10
   share: /mnt/cache/k8s-fast
   subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}/${pv.metadata.name}
   mountPermissions: "0770"
-  onDelete: delete
-reclaimPolicy: Delete
+  onDelete: retain
+reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: Immediate
 mountOptions:
@@ -28,11 +28,11 @@ kind: StorageClass
 metadata:
   name: nfs-user
   annotations:
-    storageclass.kubernetes.io/is-default-class: "false"
+    storageclass.kubernetes.io/is-default-class: "true"
 provisioner: nfs.csi.k8s.io
 parameters:
-  server: 192.0.2.50
-  share: /mnt/user/k8s-durable
+  server: 10.20.90.10
+  share: /mnt/user/k8s
   subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}/${pv.metadata.name}
   mountPermissions: "0770"
   onDelete: retain

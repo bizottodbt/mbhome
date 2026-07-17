@@ -1144,7 +1144,7 @@ The old k3s placeholder has been replaced by a Talos-first Kubernetes path.
 Start with a single VM workflow. Once that is stable, expand it into a
 multi-node Talos control-plane/worker layout, pin the Talos ISO version,
 introduce a stable Kubernetes endpoint, bootstrap Kubernetes with `talosctl`,
-and then let Flux manage everything under `kubernetes/app-cluster/`.
+and then let Flux manage everything under `kubernetes/`.
 
 For the first stable Kubernetes API endpoint, use the HAProxy-on-Unraid bundle:
 
@@ -1419,7 +1419,7 @@ make talos-health
 The Cilium values live at:
 
 ```text
-infrastructure/kubernetes/cilium/values.yaml
+kubernetes/infrastructure/cilium/values.yaml
 ```
 
 They use Kubernetes IPAM, Talos' cgroup mount, KubePrism on localhost port
@@ -1427,36 +1427,101 @@ They use Kubernetes IPAM, Talos' cgroup mount, KubePrism on localhost port
 `1` for the first control-plane node; raise it after adding more control-plane
 nodes.
 
-Install the NFS CSI driver after Cilium and after at least one worker is ready.
-This creates two StorageClasses for Unraid: one fast cache-backed class over the
-10 GbE address and one parity-backed class through the Unraid user share layer.
+### Bootstrap Flux GitOps
 
-Edit `infrastructure/kubernetes/nfs-csi/storageclasses.yaml` and set:
+Flux is the preferred GitOps controller for this cluster. It is lightweight,
+does not require a UI service, and fits well with the Talos model: Talos owns
+node configuration, Flux owns Kubernetes desired state from Git.
 
-- `nfs-cache` `server` to the Unraid 10 GbE IP, for example `10.20.90.10`
-- `nfs-cache` `share` to a direct cache export, for example `/mnt/cache/k8s-fast`
-- `nfs-user` `server` to the same Unraid 10 GbE IP
-- `nfs-user` `share` to a parity-backed export, for example `/mnt/user/k8s-durable`
+Install the Flux CLI on the workstation:
+
+```bash
+brew install fluxcd/tap/flux
+```
+
+Check the cluster before bootstrapping:
+
+```bash
+make flux-check
+```
+
+Commit and push the GitOps path before running bootstrap. Flux bootstrap works
+against the GitHub repository, not uncommitted local files:
+
+```bash
+git add kubernetes
+git commit -m "Add mbhome Flux GitOps bootstrap"
+git push
+```
+
+Create a GitHub token for the bootstrap operation, export it in the current
+shell, and bootstrap Flux from this repository:
+
+```bash
+export GITHUB_TOKEN=...
+make flux-bootstrap-github
+```
+
+This target intentionally uses the GitHub bootstrap flow. The PAT is used by
+the Flux CLI to talk to the GitHub API, write/update the Flux manifests, and
+configure a deploy key. Flux then syncs the repo over SSH using the generated
+deploy key stored in the cluster as the `flux-system` secret. We do not use
+`--token-auth`, so the PAT is not used as the long-lived Git credential inside
+the cluster.
+
+For a fine-grained GitHub PAT on an existing repository, use:
+
+- `Administration`: read-only
+- `Contents`: read and write
+- `Metadata`: read-only
+
+The bootstrap target sets `FLUX_GITHUB_PRIVATE=false` because this repo is
+public, but it still uses the authenticated GitHub bootstrap workflow for
+learning the full deploy-key model.
+
+The bootstrap path is:
+
+```text
+kubernetes/clusters/mbhome
+```
+
+Flux writes its own controller manifests under `flux-system/` and reconciles the
+committed `infrastructure` Kustomization before the `apps` Kustomization. The
+first GitOps-managed infrastructure item is NFS CSI:
+
+```text
+kubernetes/infrastructure/nfs-csi/
+```
+
+Edit the NFS CSI Flux manifests there before bootstrapping if the Unraid IP or
+exports change:
+
+- `nfs-cache` `server` should be the Unraid 10 GbE IP, for example `10.20.90.10`
+- `nfs-cache` `share` should be a direct cache export, for example `/mnt/cache/k8s-fast`
+- `nfs-user` `server` should be the same Unraid 10 GbE IP
+- `nfs-user` `share` should be a parity-backed export, for example `/mnt/user/k8s`
 
 Create both paths on Unraid and export them over NFS to the Talos node subnet
-before applying the StorageClasses. For the fast class, export the cache path
+before Flux reconciles NFS CSI. For the fast class, export the cache path
 directly, for example `/mnt/cache/k8s-fast`, to bypass Unraid user shares and
 parity/mover behavior. The CSI driver creates PVC subdirectories inside those
 exports, but it does not create or export the top-level shares.
 
-Then install the driver and apply the StorageClasses:
+Cilium remains a bootstrap dependency for now because Flux needs a working CNI
+before its controllers can run. After Flux is healthy, additional platform
+components should be added under the cluster path instead of installed by hand.
+
+Check Flux reconciliation:
 
 ```bash
-make nfs-csi-helm-repo
-make nfs-csi-install
-make nfs-csi-storageclasses
-make nfs-csi-status
+make flux-status
 ```
 
-Use `nfs-cache` for hot or disposable persistent volumes. It uses
-`reclaimPolicy: Delete` and asks the CSI driver to delete the backing
-subdirectory when a PVC is deleted. Use `nfs-user` for data that should survive
-PVC deletion. It uses `reclaimPolicy: Retain`.
+Force a sync after pushing changes:
+
+```bash
+make flux-reconcile
+```
 
 After the first config has been applied, Talos requires client certificates.
 Use the authenticated target for later control-plane config changes:

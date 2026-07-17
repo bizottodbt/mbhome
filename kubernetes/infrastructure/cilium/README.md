@@ -2,6 +2,10 @@
 
 This directory contains the Helm values for Cilium on the mbhome Talos cluster.
 
+Cilium is installed manually before Flux because Flux controllers need a
+working CNI to run. Keep the values here so the bootstrap command and the
+steady-state cluster layout live under the same Kubernetes tree.
+
 The Talos machine-config patches disable the default CNI and kube-proxy:
 
 ```yaml

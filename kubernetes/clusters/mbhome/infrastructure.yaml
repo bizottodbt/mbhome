@@ -6,9 +6,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/app-cluster/infrastructure
+  path: ./kubernetes/infrastructure
   prune: true
   sourceRef:
     kind: GitRepository
-    name: mbhome
+    name: flux-system
   dependsOn: []

@@ -11,7 +11,6 @@ infrastructure/ansible/vars/proxmox-users.local.yaml
 infrastructure/ad/directory.yaml
 infrastructure/ad/directory.local.yaml
 infrastructure/ad/dns.local.yaml
-infrastructure/kubernetes/nfs-csi/storageclasses.local.yaml
 infrastructure/ironic/nodes/proxmox-nodes.yaml
 
 # Kolla-Ansible — contains all OpenStack service passwords
