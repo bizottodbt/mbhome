@@ -1573,6 +1573,10 @@ Check issuance with:
 make cert-manager-status
 ```
 
+cert-manager is configured to use public recursive resolvers for DNS-01
+self-checks. This avoids false propagation failures when the cluster's internal
+DNS is authoritative for `mbhome.biz` or forwards through AD.
+
 After Flux is healthy, additional platform components should be added under the
 cluster path instead of installed by hand.
 
