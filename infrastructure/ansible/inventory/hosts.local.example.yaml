@@ -101,31 +101,44 @@ all:
           - name: vmbr0
             # Optional: set this to the management NIC MAC if your router DHCP
             # reservation should keep following the bridged management address.
-            # mac: 00:00:00:00:00:01
+            # Define proxmox_management_bridge_mac per host when needed.
+            mac_var: proxmox_management_bridge_mac
             ports:
               - enp3s0
             dhcp4: true
             link_local: false
             ipv6_accept_ra: false
+          - name: vmbr90
+            enabled_var: proxmox_storage_bridge_enabled
+            ports:
+              - enp5s0f0
+            address_var: proxmox_storage_bridge_address
+            prefix_var: proxmox_storage_bridge_prefix
+            dhcp4: false
+            link_local: false
+            ipv6_accept_ra: false
+            required_for_online: "no"
         proxmox_nfs_mounts: []
       hosts:
         mbhome-proxmox-01:
           ansible_host: 192.0.2.51
           bmc_inventory_host: mbhome-proxmox-01-bmc
-          proxmox_10gbe_links:
-            - interface: enp5s0f0
-              address: 198.51.100.11
-              prefix: 24
-              purpose: switched-storage-vlan90
+          # Optional: keep the management DHCP reservation stable after vmbr0
+          # owns the DHCP lease instead of enp3s0.
+          # proxmox_management_bridge_mac: 00:00:00:00:00:01
+          proxmox_storage_bridge_enabled: true
+          proxmox_storage_bridge_address: 198.51.100.11
+          proxmox_storage_bridge_prefix: 24
+          proxmox_10gbe_links: []
 
         mbhome-proxmox-02:
           ansible_host: 192.0.2.52
           bmc_inventory_host: mbhome-proxmox-02-bmc
-          proxmox_10gbe_links:
-            - interface: enp5s0f0
-              address: 198.51.100.12
-              prefix: 24
-              purpose: switched-storage-vlan90
+          # proxmox_management_bridge_mac: 00:00:00:00:00:02
+          proxmox_storage_bridge_enabled: true
+          proxmox_storage_bridge_address: 198.51.100.12
+          proxmox_storage_bridge_prefix: 24
+          proxmox_10gbe_links: []
 
         mbhome-proxmox-03:
           ansible_host: 192.0.2.53

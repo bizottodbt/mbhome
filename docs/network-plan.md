@@ -84,12 +84,13 @@ Recommended addressing on the 10 GbE storage network:
 | Device/interface | Address | CIDR | Purpose |
 |---|---:|---|---|
 | Unraid 10 GbE | `198.51.100.1` | `198.51.100.0/24` | NFS/storage endpoint |
-| `mbhome-proxmox-01` 10 GbE | `198.51.100.11` | `198.51.100.0/24` | NFS, migration, replication |
-| `mbhome-proxmox-02` 10 GbE | `198.51.100.12` | `198.51.100.0/24` | NFS, migration, replication |
-| `mbhome-proxmox-03` 10 GbE | `198.51.100.13` | `198.51.100.0/24` | Future, when a 10 GbE NIC is added |
+| `mbhome-proxmox-01` `vmbr90` | `198.51.100.11` | `198.51.100.0/24` | NFS, migration, replication, VM storage network |
+| `mbhome-proxmox-02` `vmbr90` | `198.51.100.12` | `198.51.100.0/24` | NFS, migration, replication, VM storage network |
+| `mbhome-proxmox-03` `vmbr90` | `198.51.100.13` | `198.51.100.0/24` | Future, when a 10 GbE NIC is added |
 
-These interfaces should not have a default gateway. The default route stays on
-the `192.0.2.0/24` management LAN.
+These bridges should not have a default gateway. The default route stays on the
+`192.0.2.0/24` management LAN. The physical 10 GbE NIC, for example
+`enp5s0f0`, is a bridge port; the IP belongs on `vmbr90`.
 
 For Proxmox storage mounts, prefer the Unraid 10 GbE IP after the switch ports
 and Unraid interface are configured and ping-tested:

@@ -24,3 +24,4 @@ TALOS_WORKER_NODES := mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos
 TALOS_UPGRADE_VERSION := v1.13.6
 TALOS_UPGRADE_IMAGE := ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
 TALOS_UPGRADE_DRAIN := true
+NFS_CSI_VERSION := 4.13.4

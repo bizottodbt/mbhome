@@ -2,3 +2,13 @@ apiVersion: v1alpha1
 kind: HostnameConfig
 auto: off
 hostname: mbhome-talos-worker-02
+---
+# This block should be filled after the Talos VM is created and assigned a MAC address. The MAC address is used to identify the VM and configure its network interface.
+machine:
+  network:
+    interfaces:
+      - deviceSelector:
+          hardwareAddr: "02:90:20:30:82:02"
+        dhcp: false
+        addresses:
+          - 10.20.90.82/24

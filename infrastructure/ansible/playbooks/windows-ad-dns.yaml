@@ -4,7 +4,7 @@
   gather_facts: false
 
   vars:
-    _ad_dns_state_path: "{{ playbook_dir }}/../../ad/dns.local.yaml"
+    _ad_dns_state_path: "{{ playbook_dir }}/../../ad/dns.yaml"
     _ad_dns_remote_state_path: C:\Windows\Temp\mbhome-ad-dns-state.json
     _ad_dns_remote_script_path: C:\Windows\Temp\mbhome-ad-dns-reconcile.ps1
     _ad_dns_check: "{{ ad_dns_check | default(false) | bool }}"
@@ -20,7 +20,7 @@
         that:
           - ad_dns.forwarders is defined or ad_dns.zones is defined
         fail_msg: >-
-          infrastructure/ad/dns.local.yaml must define forwarders and/or at
+          infrastructure/ad/dns.yaml must define forwarders and/or at
           least one zone under zones.
 
     - name: Wait for WinRM

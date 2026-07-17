@@ -2,6 +2,7 @@
 [NetDev]
 Name={{ item.name }}
 Kind=bridge
-{% if item.mac | default('') %}
-MACAddress={{ item.mac }}
+{% set bridge_mac = item.resolved_mac | default(item.mac | default('')) %}
+{% if bridge_mac %}
+MACAddress={{ bridge_mac }}
 {% endif %}

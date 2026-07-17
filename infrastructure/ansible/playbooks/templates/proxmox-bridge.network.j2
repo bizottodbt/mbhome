@@ -4,13 +4,19 @@ Name={{ item.name }}
 
 [Link]
 RequiredForOnline={{ item.required_for_online | default('routable') }}
+{% set bridge_mac = item.resolved_mac | default(item.mac | default('')) %}
+{% if bridge_mac %}
+MACAddress={{ bridge_mac }}
+{% endif %}
 {% if item.mtu | default('') %}
 MTUBytes={{ item.mtu }}
 {% endif %}
 
 [Network]
-{% if item.address | default('') %}
-Address={{ item.address }}/{{ item.prefix | default(24) }}
+{% set bridge_address = item.resolved_address | default(item.address | default('')) %}
+{% set bridge_prefix = item.resolved_prefix | default(item.prefix | default('')) %}
+{% if bridge_address %}
+Address={{ bridge_address }}/{{ bridge_prefix | default(24, true) }}
 {% elif item.dhcp4 | default(true) | bool %}
 DHCP=ipv4
 {% else %}
@@ -28,6 +34,7 @@ IPv6AcceptRA={{ item.ipv6_accept_ra | default('no') }}
 
 {% if item.dhcp4 | default(true) | bool and not (item.address | default('')) %}
 [DHCP]
+ClientIdentifier={{ item.dhcp_client_identifier | default('mac') }}
 UseDNS={{ item.dhcp_use_dns | default('yes') }}
 UseNTP={{ item.dhcp_use_ntp | default('no') }}
 UseHostname={{ item.dhcp_use_hostname | default('no') }}

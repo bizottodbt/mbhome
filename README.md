@@ -3,6 +3,15 @@ Repo for cluster and infrastructure deployment.
 
 ---
 
+## Repository Data Policy
+
+Commit declarative topology when it contains only private IPs, CIDRs, DNS
+records, MAC addresses, hostnames, StorageClasses, or other non-secret desired
+state. Keep credentials, API tokens, generated secrets, Terraform/Packer local
+vars, BMC access, user passwords, and state files in git-ignored local files.
+
+---
+
 ## Deploy OpenStack VM
 
 Provisions a Debian 13 VM on Unraid (4 vCPU / 16 GB / 100 GB OS disk + 200 GB persistent data disk, IP `192.0.2.10`) that hosts OpenStack services via Kolla-Ansible. This VM is the bare-metal provisioning controller — Ironic PXE-boots the Proxmox nodes through it.
@@ -463,11 +472,11 @@ systemctl status proxmox-bootstrap-hosts ssh pve-cluster pvedaemon pveproxy
 journalctl -b -u proxmox-bootstrap-hosts -u ssh -u pve-cluster -u pveproxy --no-pager
 ```
 
-### Configure Proxmox baseline and 10 GbE links
+### Configure Proxmox baseline and 10 GbE storage bridges
 
 Router DHCP reservations provide the Proxmox management IPs. The baseline
-playbook does not write static management networking; it only manages extra
-10 GbE point-to-point interfaces from host variables. The public skeleton is
+playbook does not write static management networking; it manages Proxmox VM
+bridges and optional 10 GbE storage bridges from host variables. The public skeleton is
 [`infrastructure/ansible/inventory/hosts.yaml`](infrastructure/ansible/inventory/hosts.yaml);
 real per-node values live in git-ignored `infrastructure/ansible/inventory/hosts.local.yaml`.
 
@@ -483,11 +492,10 @@ Run the baseline for one deployed node:
 make proxmox-baseline LIMIT=mbhome-proxmox-01
 ```
 
-The 10 GbE links are configured with `systemd-networkd` files named
-`/etc/systemd/network/05-proxmox-10gbe-*.network`, ahead of the image's
-catch-all DHCP bootstrap file. NFS continues to mount through the management
-address `192.0.2.48` until the USW-Pro-48 SFP+ storage VLAN is configured and
-tested.
+For the 10 GbE storage network, prefer a Proxmox bridge such as `vmbr90` instead
+of putting the IP directly on the physical NIC. The physical NIC becomes a
+bridge port, and the storage IP moves to the bridge. This lets Proxmox itself
+and Talos/Kubernetes VMs share the same storage network.
 
 The `make ironic-deploy-proxmox` wrapper also runs this baseline from the real
 inventory, so post-deploy configuration uses the same per-node variables. It
@@ -520,22 +528,57 @@ VMs need a Linux bridge, so enable one in
 ```yaml
 proxmox_vm_bridges:
   - name: vmbr0
-    # Optional: use the physical management NIC MAC to keep an existing
-    # router DHCP reservation after DHCP moves from the NIC to vmbr0.
-    # mac: 00:00:00:00:00:01
+    # Optional: define proxmox_management_bridge_mac per host to keep an
+    # existing router DHCP reservation after DHCP moves from the NIC to vmbr0.
+    mac_var: proxmox_management_bridge_mac
     ports:
       - enp3s0   # management NIC on the MJ11 nodes; adjust if a node differs
     dhcp4: true
     link_local: false
     ipv6_accept_ra: false
+
+  - name: vmbr90
+    enabled_var: proxmox_storage_bridge_enabled
+    ports:
+      - enp5s0f0 # 10 GbE storage NIC on the MJ11 nodes; adjust if needed
+    address_var: proxmox_storage_bridge_address
+    prefix_var: proxmox_storage_bridge_prefix
+    dhcp4: false
+    link_local: false
+    ipv6_accept_ra: false
+    required_for_online: "no"
 ```
 
-This moves the management DHCP lease onto `vmbr0` and enslaves the physical NIC
-as a bridge port. SSH may briefly disconnect while `systemd-networkd` restarts.
-After rerunning the baseline, verify the bridge before retrying Terraform:
+Set the storage bridge variables per host that actually has the 10 GbE NIC:
+
+```yaml
+mbhome-proxmox-01:
+  proxmox_management_bridge_mac: 00:00:00:00:00:01
+  proxmox_storage_bridge_enabled: true
+  proxmox_storage_bridge_address: 198.51.100.11
+  proxmox_storage_bridge_prefix: 24
+  proxmox_10gbe_links: []
+
+mbhome-proxmox-02:
+  proxmox_management_bridge_mac: 00:00:00:00:00:02
+  proxmox_storage_bridge_enabled: true
+  proxmox_storage_bridge_address: 198.51.100.12
+  proxmox_storage_bridge_prefix: 24
+  proxmox_10gbe_links: []
+```
+
+Do not configure the same physical interface in both `proxmox_10gbe_links` and
+`proxmox_vm_bridges`. The bridge form is the right choice once VMs need access
+to that network.
+
+This moves the management DHCP lease onto `vmbr0` and the storage static IP
+onto `vmbr90`; both physical NICs become bridge ports. SSH may briefly
+disconnect while `systemd-networkd` restarts. After rerunning the baseline,
+verify the bridges before retrying Terraform:
 
 ```bash
 ip -br addr show vmbr0
+ip -br addr show vmbr90
 bridge link
 ```
 
@@ -549,26 +592,18 @@ mbhome-proxmox-02 10 GbE: 198.51.100.12
 ```
 
 Use access/native VLAN 90 on the SFP+ ports so the hosts can use untagged
-static IPs directly on their 10 GbE interfaces.
+static IPs directly on their `vmbr90` storage bridges.
 
 After connecting the SFP+ links, verify the storage network before moving NFS:
 
 ```bash
 ip -br link show enp5s0f0
-ip -br addr show enp5s0f0
+ip -br addr show vmbr90
 ping -c3 198.51.100.1
 ```
 
-Once a node can reach Unraid over the 10 GbE storage VLAN, change only that
-node's `proxmox_nfs_server` inventory value, or promote it to a group default
-after all nodes are tested:
-
-```yaml
-proxmox_nfs_server: 198.51.100.1
-```
-
-Then rerun the baseline for that node. Keep MTU at `1500` until both ends of a
-storage link are intentionally moved to jumbo frames.
+Keep MTU at `1500` until both ends of a storage link are intentionally moved to
+jumbo frames.
 
 ### Configure Proxmox sudo and Web UI users
 
@@ -751,25 +786,19 @@ targets expect a `terraform` binary on `PATH`:
 terraform version
 ```
 
-Create the local vars file:
+Create the local secret vars file if it does not already exist:
 
 ```bash
 cp infrastructure/terraform/proxmox.shared.example.tfvars \
   infrastructure/terraform/proxmox.shared.local.tfvars
-
-cp infrastructure/terraform/proxmox-smoke-vm/terraform.example.tfvars \
-  infrastructure/terraform/proxmox-smoke-vm/terraform.local.tfvars
 ```
 
-Edit `proxmox.shared.local.tfvars` for values shared by all Proxmox Terraform
-stacks:
+Edit `proxmox.shared.local.tfvars` for the Proxmox API token:
 
-- `proxmox_api_url`: any clustered Proxmox node UI/API URL
 - `proxmox_api_token`: token in `user@realm!tokenid=secret` format
-- `proxmox_ssh_username`: SSH user for host-side disk import operations, usually `root` in this lab
-- `vm_network_bridge`: usually `vmbr0`
 
-Edit `proxmox-smoke-vm/terraform.local.tfvars` for the smoke VM values:
+Non-secret shared topology lives in `infrastructure/terraform/proxmox.shared.tfvars`.
+Edit `proxmox-smoke-vm/terraform.tfvars` for the smoke VM values:
 
 - `proxmox_node`: the Proxmox node that should create the VM
 - `vm_datastore_id`: start with `local`; use `proxmox-vms` for live migration
@@ -890,24 +919,19 @@ Build the Windows Server template first. The template should have WinRM enabled
 by the Packer build so Ansible can finish per-VM configuration after Terraform
 creates the clones.
 
-Create the local vars file:
+Create the local secret vars file if it does not already exist:
 
 ```bash
 cp infrastructure/terraform/proxmox.shared.example.tfvars \
   infrastructure/terraform/proxmox.shared.local.tfvars
-
-cp infrastructure/terraform/proxmox-ad-vms/terraform.example.tfvars \
-  infrastructure/terraform/proxmox-ad-vms/terraform.local.tfvars
 ```
 
-Edit `proxmox.shared.local.tfvars` for values shared by all Proxmox Terraform
-stacks:
+Edit `proxmox.shared.local.tfvars` for the Proxmox API token:
 
-- `proxmox_api_url`: any clustered Proxmox node UI/API URL
 - `proxmox_api_token`: token in `user@realm!tokenid=secret` format
-- `vm_network_bridge`: usually `vmbr0`
 
-Edit `proxmox-ad-vms/terraform.local.tfvars` for AD-specific values:
+Non-secret shared topology lives in `infrastructure/terraform/proxmox.shared.tfvars`.
+Edit `proxmox-ad-vms/terraform.tfvars` for AD-specific values:
 
 - `template_vm_id`: VMID of the Packer-built Windows Server template
 - `template_node_name`: Proxmox node that currently owns the template
@@ -1066,18 +1090,11 @@ the user's `gidNumber` to that private group's GID. AD users and groups share
 the `sAMAccountName` namespace, so the private group needs the suffix even
 though Linux commonly uses the same visible name for user-private groups.
 
-AD DNS forwarders and records can also be managed declaratively from a local
-desired-state file:
+AD DNS forwarders and records can also be managed declaratively from a
+committed desired-state file:
 
 ```text
-infrastructure/ad/dns.local.yaml
-```
-
-The real file is gitignored. Start from the example:
-
-```bash
-cp infrastructure/ad/dns.local.example.yaml \
-  infrastructure/ad/dns.local.yaml
+infrastructure/ad/dns.yaml
 ```
 
 Example DNS state for public recursion and the Kubernetes API load balancer:
@@ -1152,35 +1169,49 @@ The first step is a single Talos control-plane VM. This verifies Proxmox VM
 creation, shared storage, ISO boot, and network placement before expanding to a
 proper multi-node cluster.
 
-Create the local vars file:
+Create the local secret vars file if it does not already exist:
 
 ```bash
 cp infrastructure/terraform/proxmox.shared.example.tfvars \
   infrastructure/terraform/proxmox.shared.local.tfvars
-
-cp infrastructure/terraform/proxmox-talos-vm/terraform.example.tfvars \
-  infrastructure/terraform/proxmox-talos-vm/terraform.local.tfvars
 ```
 
-Edit `proxmox.shared.local.tfvars` for values shared by all Proxmox Terraform
-stacks:
+Edit `proxmox.shared.local.tfvars` for the Proxmox API token:
 
-- `proxmox_api_url`: any clustered Proxmox node UI/API URL
 - `proxmox_api_token`: token in `user@realm!tokenid=secret` format
-- `proxmox_ssh_username`: SSH user for provider host-side operations
-- `vm_network_bridge`: usually `vmbr0`
 
-Edit `proxmox-talos-vm/terraform.local.tfvars` for the Talos VM values:
+Non-secret shared topology lives in `infrastructure/terraform/proxmox.shared.tfvars`.
+Edit `proxmox-talos-vm/terraform.tfvars` for the Talos VM values:
 
 - `proxmox_node`: Proxmox node that should create the VM
 - `iso_datastore_id`: storage where Proxmox should cache the Talos ISO, usually `proxmox-isos`
 - `vm_datastore_id`: storage for the Talos disk, usually `proxmox-vms`
 - `talos_iso_url`: pin this to a specific Talos release URL before building the real cluster
+- `vm_boot_from_iso`: default boot behavior for nodes that do not set `boot_from_iso`
+- `talos_nodes.<name>.boot_from_iso`: per-node boot behavior; set `true` only for a node's first install or intentional reinstall, then set back to `false`
+- `talos_nodes.<name>.storage_bridge`: optional second NIC bridge, usually `vmbr90`, for 10 GbE storage/NFS traffic
 - `vm_mac_address`: optional fixed MAC for DHCP reservations
 - `vm_agent_enabled`: enables the Proxmox QEMU guest-agent flag; Talos also needs a QEMU guest-agent system extension in the ISO/image for the agent to report data
 - `vm_efi_disk_type`: OVMF EFI vars disk type, usually `4m`
 
-Then create the VM:
+For first install of a specific node, temporarily set that node entry:
+
+```hcl
+talos_nodes = {
+  mbhome-talos-worker-03 = {
+    role          = "worker"
+    proxmox_node  = "mbhome-proxmox-03"
+    vm_id         = 9413
+    cores         = 4
+    memory_mb     = 8192
+    disk_gb       = 64
+    mac_address   = null
+    boot_from_iso = true
+  }
+}
+```
+
+Then create the VM and install Talos:
 
 ```bash
 make proxmox-talos-vm-init
@@ -1188,10 +1219,48 @@ make proxmox-talos-vm-plan
 make proxmox-talos-vm-apply
 ```
 
-The stack creates one VM named `mbhome-talos-cp-01` by default. It boots the
-Talos metal ISO and attaches a blank disk. The VM is not a usable Kubernetes
-node until Talos machine configuration is generated and applied with
-`talosctl`; that comes after the VM boot path and networking are verified.
+The stack creates one VM named `mbhome-talos-cp-01` by default. With
+`boot_from_iso = true` for a node, that node boots the Talos metal ISO and
+attaches a blank disk. The VM is not a usable Kubernetes node until Talos
+machine configuration is generated and applied with `talosctl`; that comes
+after the VM boot path and networking are verified.
+
+After Talos has installed to disk and rebooted once, set that node back to:
+
+```hcl
+boot_from_iso = false
+```
+
+Then apply Terraform again. This changes the boot order to disk first, while
+leaving the ISO attached for future reinstall work:
+
+```bash
+make proxmox-talos-vm-apply
+```
+
+To attach a Talos VM to the 10 GbE storage bridge, set `storage_bridge` on that
+node:
+
+```hcl
+talos_nodes = {
+  mbhome-talos-worker-01 = {
+    role           = "worker"
+    proxmox_node   = "mbhome-proxmox-01"
+    vm_id          = 9411
+    cores          = 4
+    memory_mb      = 8192
+    disk_gb        = 64
+    mac_address    = null
+    boot_from_iso  = false
+    storage_bridge = "vmbr90"
+  }
+}
+```
+
+The NFS CSI mount is performed by the CSI node plugin on the Talos node, so
+Unraid should allow the Talos node storage subnet, for example `10.20.90.0/24`.
+You do not need to allow the Kubernetes pod CIDR for these NFS exports unless
+you later run pods that mount NFS directly without CSI.
 
 Install `talosctl` on the controller if it is not already available:
 
@@ -1302,9 +1371,9 @@ make talos-version
 
 Talos upgrades happen through the installed node, not by changing the boot ISO
 after Talos is installed. The Terraform `talos_iso_url` only controls the ISO
-used for bootstrapping/reinstalling a node. After installation, the VM normally
-boots from its disk; changing the ISO does not upgrade or downgrade the running
-Talos OS.
+used for bootstrapping/reinstalling a node. After installation, keep
+`vm_boot_from_iso = false` so the VM boots from disk; changing the ISO does not
+upgrade or downgrade the running Talos OS.
 
 If a freshly rebuilt node does not match the pinned `talos_iso_url`, check the
 Proxmox VM config and attached ISO first:
@@ -1357,6 +1426,37 @@ They use Kubernetes IPAM, Talos' cgroup mount, KubePrism on localhost port
 `7445`, and Cilium kube-proxy replacement. The operator replica count starts at
 `1` for the first control-plane node; raise it after adding more control-plane
 nodes.
+
+Install the NFS CSI driver after Cilium and after at least one worker is ready.
+This creates two StorageClasses for Unraid: one fast cache-backed class over the
+10 GbE address and one parity-backed class through the Unraid user share layer.
+
+Edit `infrastructure/kubernetes/nfs-csi/storageclasses.yaml` and set:
+
+- `nfs-cache` `server` to the Unraid 10 GbE IP, for example `10.20.90.10`
+- `nfs-cache` `share` to a direct cache export, for example `/mnt/cache/k8s-fast`
+- `nfs-user` `server` to the same Unraid 10 GbE IP
+- `nfs-user` `share` to a parity-backed export, for example `/mnt/user/k8s-durable`
+
+Create both paths on Unraid and export them over NFS to the Talos node subnet
+before applying the StorageClasses. For the fast class, export the cache path
+directly, for example `/mnt/cache/k8s-fast`, to bypass Unraid user shares and
+parity/mover behavior. The CSI driver creates PVC subdirectories inside those
+exports, but it does not create or export the top-level shares.
+
+Then install the driver and apply the StorageClasses:
+
+```bash
+make nfs-csi-helm-repo
+make nfs-csi-install
+make nfs-csi-storageclasses
+make nfs-csi-status
+```
+
+Use `nfs-cache` for hot or disposable persistent volumes. It uses
+`reclaimPolicy: Delete` and asks the CSI driver to delete the backing
+subdirectory when a PVC is deleted. Use `nfs-user` for data that should survive
+PVC deletion. It uses `reclaimPolicy: Retain`.
 
 After the first config has been applied, Talos requires client certificates.
 Use the authenticated target for later control-plane config changes:

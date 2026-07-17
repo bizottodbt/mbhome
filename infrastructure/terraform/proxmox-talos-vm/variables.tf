@@ -77,16 +77,20 @@ variable "vm_id" {
 variable "talos_nodes" {
   description = "Declarative Talos VM map keyed by VM/hostname. Set only the nodes you want Terraform to create now."
   type = map(object({
-    role         = string
-    proxmox_node = string
-    vm_id        = optional(number)
-    started      = optional(bool)
-    on_boot      = optional(bool)
-    cores        = optional(number)
-    memory_mb    = optional(number)
-    disk_gb      = optional(number)
-    mac_address  = optional(string)
-    vlan_id      = optional(number)
+    role                = string
+    proxmox_node        = string
+    vm_id               = optional(number)
+    started             = optional(bool)
+    on_boot             = optional(bool)
+    cores               = optional(number)
+    memory_mb           = optional(number)
+    disk_gb             = optional(number)
+    mac_address         = optional(string)
+    vlan_id             = optional(number)
+    boot_from_iso       = optional(bool)
+    storage_bridge      = optional(string)
+    storage_mac_address = optional(string)
+    storage_vlan_id     = optional(number)
   }))
   default = null
 
@@ -106,6 +110,12 @@ variable "vm_started" {
 
 variable "vm_on_boot" {
   description = "Start the VM when the Proxmox node boots."
+  type        = bool
+  default     = false
+}
+
+variable "vm_boot_from_iso" {
+  description = "Boot the Talos installer ISO before disk. Set true only for first install or intentional reinstall, then set false so host reboots boot the installed disk."
   type        = bool
   default     = false
 }
@@ -172,6 +182,24 @@ variable "vm_mac_address" {
 
 variable "vm_vlan_id" {
   description = "Optional VLAN tag for the Talos VM NIC."
+  type        = number
+  default     = null
+}
+
+variable "vm_storage_bridge" {
+  description = "Optional Proxmox Linux bridge for a second Talos VM storage NIC, for example vmbr90. Leave null to create only the management NIC."
+  type        = string
+  default     = null
+}
+
+variable "vm_storage_mac_address" {
+  description = "Optional fixed MAC address for the Talos VM storage NIC."
+  type        = string
+  default     = null
+}
+
+variable "vm_storage_vlan_id" {
+  description = "Optional VLAN tag for the Talos VM storage NIC."
   type        = number
   default     = null
 }

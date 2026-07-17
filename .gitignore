@@ -1,4 +1,6 @@
-# Local homelab values — IPs, MACs, BMC credentials, host-specific overrides
+# Local homelab values — credentials, tokens, stateful host overrides, and secrets.
+# Topology such as private IPs, CIDRs, DNS records, and StorageClasses can be
+# committed when it contains no credentials.
 local.mk
 infrastructure/ansible/inventory/hosts.local.yaml
 infrastructure/ansible/vars/bmc-users.local.yaml
@@ -9,6 +11,7 @@ infrastructure/ansible/vars/proxmox-users.local.yaml
 infrastructure/ad/directory.yaml
 infrastructure/ad/directory.local.yaml
 infrastructure/ad/dns.local.yaml
+infrastructure/kubernetes/nfs-csi/storageclasses.local.yaml
 infrastructure/ironic/nodes/proxmox-nodes.yaml
 
 # Kolla-Ansible — contains all OpenStack service passwords
@@ -38,6 +41,10 @@ infrastructure/kolla-ansible/config/ironic/ironic-agent*.initramfs
 .terraform.lock.hcl
 *.tfvars
 !*.example.tfvars
+!infrastructure/terraform/proxmox.shared.tfvars
+!infrastructure/terraform/proxmox-smoke-vm/terraform.tfvars
+!infrastructure/terraform/proxmox-ad-vms/terraform.tfvars
+!infrastructure/terraform/proxmox-talos-vm/terraform.tfvars
 
 # Packer local overrides
 *.pkrvars.hcl

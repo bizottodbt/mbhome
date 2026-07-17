@@ -32,6 +32,117 @@
       no_log: true
       when: _proxmox_users_file.stat.exists
 
+    - name: Initialize enabled Proxmox VM bridge list
+      ansible.builtin.set_fact:
+        _proxmox_vm_bridges_enabled: []
+
+    - name: Collect enabled Proxmox VM bridges
+      ansible.builtin.set_fact:
+        _proxmox_vm_bridges_enabled: "{{ _proxmox_vm_bridges_enabled + [item] }}"
+      loop: "{{ proxmox_vm_bridges | default([]) }}"
+      when:
+        - item.enabled | default(true) | bool
+        - not (item.enabled_var | default('')) or (lookup('ansible.builtin.vars', item.enabled_var, default=false) | bool)
+
+    - name: Initialize resolved Proxmox VM bridge list
+      ansible.builtin.set_fact:
+        _proxmox_vm_bridges_resolved: []
+
+    - name: Resolve Proxmox VM bridge variable-backed values
+      ansible.builtin.set_fact:
+        _proxmox_vm_bridges_resolved: "{{ _proxmox_vm_bridges_resolved + [_proxmox_bridge_resolved] }}"
+      loop: "{{ _proxmox_vm_bridges_enabled | default([]) }}"
+      vars:
+        _proxmox_bridge_raw_mac: "{{ (item.get('mac', '') or '') | string | trim }}"
+        _proxmox_bridge_mac_var: "{{ (item.get('mac_var', '') or '') | string | trim }}"
+        _proxmox_bridge_raw_address: "{{ (item.get('address', '') or '') | string | trim }}"
+        _proxmox_bridge_address_var: "{{ (item.get('address_var', '') or '') | string | trim }}"
+        _proxmox_bridge_raw_prefix: "{{ (item.get('prefix', '') or '') | string | trim }}"
+        _proxmox_bridge_prefix_var: "{{ (item.get('prefix_var', '') or '') | string | trim }}"
+        _proxmox_bridge_resolved_mac: >-
+          {%- if _proxmox_bridge_raw_mac | length == 0 and _proxmox_bridge_mac_var | length > 0 -%}
+          {{ (lookup('ansible.builtin.vars', _proxmox_bridge_mac_var, default='') or '') | string | trim }}
+          {%- elif _proxmox_bridge_raw_mac is match('^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$') -%}
+          {{ _proxmox_bridge_raw_mac }}
+          {%- elif _proxmox_bridge_raw_mac | length > 0 -%}
+          {{ (lookup('ansible.builtin.vars', _proxmox_bridge_raw_mac, default=_proxmox_bridge_raw_mac) or '') | string | trim }}
+          {%- else -%}
+          {%- endif -%}
+        _proxmox_bridge_resolved_address: >-
+          {%- if _proxmox_bridge_raw_address | length > 0 -%}
+          {{ _proxmox_bridge_raw_address }}
+          {%- elif _proxmox_bridge_address_var | length > 0 -%}
+          {{ (lookup('ansible.builtin.vars', _proxmox_bridge_address_var, default='') or '') | string | trim }}
+          {%- else -%}
+          {%- endif -%}
+        _proxmox_bridge_resolved_prefix: >-
+          {%- if _proxmox_bridge_raw_prefix | length > 0 -%}
+          {{ _proxmox_bridge_raw_prefix }}
+          {%- elif _proxmox_bridge_prefix_var | length > 0 -%}
+          {{ (lookup('ansible.builtin.vars', _proxmox_bridge_prefix_var, default='') or '') | string | trim }}
+          {%- else -%}
+          {%- endif -%}
+        _proxmox_bridge_resolved: >-
+          {{
+            item
+            | combine({
+                'resolved_mac': (
+                  ''
+                  if (_proxmox_bridge_resolved_mac | trim | lower) in ['none', 'null']
+                  else (_proxmox_bridge_resolved_mac | trim)
+                )
+              })
+            | combine({
+                'resolved_address': (
+                  ''
+                  if (_proxmox_bridge_resolved_address | trim | lower) in ['none', 'null']
+                  else (_proxmox_bridge_resolved_address | trim)
+                )
+              })
+            | combine({
+                'resolved_prefix': (
+                  ''
+                  if (_proxmox_bridge_resolved_prefix | trim | lower) in ['none', 'null']
+                  else (_proxmox_bridge_resolved_prefix | trim)
+                )
+              })
+          }}
+
+    - name: Validate Proxmox VM bridge MAC addresses
+      ansible.builtin.assert:
+        that:
+          - item.resolved_mac | length == 0 or item.resolved_mac is match('^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+        fail_msg: >-
+          Proxmox bridge {{ item.name }} resolved MAC {{ item.resolved_mac }} is
+          not valid. Use mac: "aa:bb:cc:dd:ee:ff" or
+          mac_var: proxmox_management_bridge_mac with that host variable set to
+          a real MAC address.
+      loop: "{{ _proxmox_vm_bridges_resolved | default([]) }}"
+
+    - name: Validate Proxmox direct 10 GbE links are not also bridge ports
+      ansible.builtin.assert:
+        that:
+          - _proxmox_10gbe_link_interfaces | intersect(_proxmox_bridge_ports) | length == 0
+        fail_msg: >-
+          The same physical interface is configured both as a direct
+          proxmox_10gbe_links interface and as a proxmox_vm_bridges port:
+          {{ _proxmox_10gbe_link_interfaces | intersect(_proxmox_bridge_ports) | join(', ') }}.
+          Put the storage IP on the bridge and remove that interface from
+          proxmox_10gbe_links.
+      vars:
+        _proxmox_10gbe_link_interfaces: >-
+          {{
+            proxmox_10gbe_links | default([])
+            | map(attribute='interface')
+            | list
+          }}
+        _proxmox_bridge_ports: >-
+          {{
+            query('subelements', _proxmox_vm_bridges_enabled | default([]), 'ports', {'skip_missing': true})
+            | map(attribute='1')
+            | list
+          }}
+
     - name: Find old managed Proxmox 10 GbE network configs
       ansible.builtin.find:
         paths: /etc/systemd/network
@@ -90,7 +201,7 @@
               '/etc/systemd/network/05-proxmox-bridge-' ~ item.name ~ '.network'
             ]
           }}
-      loop: "{{ proxmox_vm_bridges | default([]) }}"
+      loop: "{{ _proxmox_vm_bridges_resolved | default([]) }}"
 
     - name: Add expected Proxmox bridge port network files
       ansible.builtin.set_fact:
@@ -101,7 +212,7 @@
               '/etc/systemd/network/05-proxmox-bridge-port-' ~ item.0.name ~ '-' ~ item.1 ~ '.network'
             ]
           }}
-      loop: "{{ query('subelements', proxmox_vm_bridges | default([]), 'ports', {'skip_missing': true}) }}"
+      loop: "{{ query('subelements', _proxmox_vm_bridges_resolved | default([]), 'ports', {'skip_missing': true}) }}"
 
     - name: Find old managed Proxmox bridge network configs
       ansible.builtin.find:
@@ -128,7 +239,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ proxmox_vm_bridges | default([]) }}"
+      loop: "{{ _proxmox_vm_bridges_resolved | default([]) }}"
       notify: Restart systemd-networkd
 
     - name: Configure Proxmox VM bridge networks
@@ -138,7 +249,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ proxmox_vm_bridges | default([]) }}"
+      loop: "{{ _proxmox_vm_bridges_resolved | default([]) }}"
       notify: Restart systemd-networkd
 
     - name: Configure Proxmox VM bridge ports
@@ -148,7 +259,36 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ query('subelements', proxmox_vm_bridges | default([]), 'ports', {'skip_missing': true}) }}"
+      loop: "{{ query('subelements', _proxmox_vm_bridges_resolved | default([]), 'ports', {'skip_missing': true}) }}"
+      notify: Restart systemd-networkd
+
+    - name: Read current Proxmox VM bridge MAC addresses
+      ansible.builtin.command:
+        argv:
+          - cat
+          - "/sys/class/net/{{ item.name }}/address"
+      loop: "{{ _proxmox_vm_bridges_resolved | default([]) }}"
+      register: _proxmox_bridge_current_macs
+      changed_when: false
+      failed_when: false
+      when: item.resolved_mac | default('') | length > 0
+
+    - name: Apply desired Proxmox VM bridge MAC addresses to existing bridges
+      ansible.builtin.command:
+        argv:
+          - ip
+          - link
+          - set
+          - dev
+          - "{{ item.item.name }}"
+          - address
+          - "{{ item.item.resolved_mac }}"
+      loop: "{{ _proxmox_bridge_current_macs.results | default([]) }}"
+      changed_when: true
+      when:
+        - item.rc | default(1) == 0
+        - item.item.resolved_mac | default('') | length > 0
+        - (item.stdout | trim | lower) != (item.item.resolved_mac | lower)
       notify: Restart systemd-networkd
 
     - name: Apply changed Proxmox bridge network files before continuing

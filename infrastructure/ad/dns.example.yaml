@@ -1,6 +1,6 @@
 ---
-# Copy to dns.local.yaml and fill in local DNS settings.
-# dns.local.yaml is gitignored.
+# Copy to dns.yaml when starting a new environment, then commit the desired
+# records if they only contain topology such as IPs, CIDRs, and DNS names.
 forwarders:
   - 192.0.2.1
   - 1.1.1.1

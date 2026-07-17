@@ -6,6 +6,10 @@ machine:
     net.ipv6.conf.all.disable_ipv6: "1"
     net.ipv6.conf.default.disable_ipv6: "1"
   network:
+    nameservers:
+      - 10.20.30.11
+      - 10.20.30.12
+      - 10.20.30.1
     interfaces:
       - interface: eth0
         dhcp: true
