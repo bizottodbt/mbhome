@@ -1661,6 +1661,27 @@ export GRAFANA_ADMIN_PASSWORD='...'
 make monitoring-grafana-secret
 ```
 
+Grafana is configured to use Dex as a confidential OAuth client. Create one
+random client secret and store it in both namespaces before reconciling:
+
+```bash
+export GRAFANA_OAUTH_CLIENT_SECRET='...'
+make grafana-oauth-secret
+```
+
+Grafana maps AD groups through Dex:
+
+```text
+grafana-admins  -> GrafanaAdmin
+grafana-editors -> Editor
+grafana-viewers -> Viewer
+k8s-admins      -> GrafanaAdmin
+k8s-viewers     -> Viewer
+```
+
+Users outside those groups can authenticate at Dex but Grafana will reject them.
+The local Grafana admin login remains enabled as a break-glass path.
+
 Then reconcile and check the stack:
 
 ```bash
@@ -1741,6 +1762,14 @@ bind DN and password are stored as a Kubernetes Secret, not committed to Git:
 export DEX_LDAP_BIND_DN='CN=svc_dex,OU=Service Accounts,OU=home,DC=mbhome,DC=biz'
 export DEX_LDAP_BIND_PASSWORD='...'
 make dex-ldap-secret
+```
+
+Grafana is registered in Dex as a confidential OAuth client. The client secret
+must match the one stored for Grafana:
+
+```bash
+export GRAFANA_OAUTH_CLIENT_SECRET='...'
+make grafana-oauth-secret
 ```
 
 After Flux deploys Dex, check the release and OIDC discovery endpoint:

@@ -28,6 +28,27 @@ export GRAFANA_ADMIN_PASSWORD='...'
 make monitoring-grafana-secret
 ```
 
+Grafana is also configured for Dex OAuth. Create a random client secret and
+store it in both places expected by Dex and Grafana:
+
+```bash
+export GRAFANA_OAUTH_CLIENT_SECRET='...'
+make grafana-oauth-secret
+```
+
+Dex group mappings for Grafana:
+
+```text
+grafana-admins  -> GrafanaAdmin
+grafana-editors -> Editor
+grafana-viewers -> Viewer
+k8s-admins      -> GrafanaAdmin
+k8s-viewers     -> Viewer
+```
+
+Users outside those groups can authenticate at Dex but Grafana will reject them.
+The local Grafana admin login remains enabled as a break-glass path.
+
 Then reconcile and check status:
 
 ```bash

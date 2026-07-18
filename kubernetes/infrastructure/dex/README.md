@@ -58,6 +58,22 @@ client id: kubernetes
 issuer: https://dex.apps.mbhome.biz
 ```
 
+Grafana uses Dex as a confidential OAuth client:
+
+```text
+client id: grafana
+redirect URI: https://grafana.apps.mbhome.biz/login/generic_oauth
+```
+
+Create the shared Grafana client secret before reconciling Flux. The same
+generated value is stored in `dex/dex-grafana-client` for Dex and
+`monitoring/grafana-oauth` for Grafana:
+
+```bash
+export GRAFANA_OAUTH_CLIENT_SECRET='...'
+make grafana-oauth-secret
+```
+
 The repo includes a credential-free OIDC kubeconfig template at
 `kubernetes/clusters/mbhome/kubeconfig.oidc.yaml`. Install it into your home
 directory for day-to-day access:

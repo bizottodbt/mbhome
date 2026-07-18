@@ -65,6 +65,36 @@ groups:
     category: Security
     description: Users allowed to sign in to Windows hosts
 
+  - name: k8s-admins
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Kubernetes cluster-admin access through Dex OIDC
+
+  - name: k8s-viewers
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Kubernetes read-only access through Dex OIDC
+
+  - name: grafana-admins
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Grafana server administrator access through Dex OIDC
+
+  - name: grafana-editors
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Grafana editor access through Dex OIDC
+
+  - name: grafana-viewers
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Grafana viewer access through Dex OIDC
+
 users:
   - username: admin_example
     display_name: Admin Example
@@ -79,6 +109,8 @@ users:
       - linux-users
       - windows-admins
       - windows-users
+      - k8s-admins
+      - grafana-admins
     enabled: true
     password: CHANGE_ME_INITIAL_PASSWORD
     must_change_password: false

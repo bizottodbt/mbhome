@@ -71,7 +71,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status monitoring-grafana-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -483,9 +483,18 @@ monitoring-grafana-secret: ## Create/update the Grafana admin secret from GRAFAN
 	$(KUBECTL_ADMIN) create namespace monitoring --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 	$(KUBECTL_ADMIN) -n monitoring create secret generic grafana-admin --from-literal=admin-user="$(GRAFANA_ADMIN_USER)" --from-literal=admin-password="$$GRAFANA_ADMIN_PASSWORD" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 
+grafana-oauth-secret: ## Create/update Dex and Grafana OAuth client secrets from GRAFANA_OAUTH_CLIENT_SECRET
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$GRAFANA_OAUTH_CLIENT_SECRET" || (echo "Export GRAFANA_OAUTH_CLIENT_SECRET before running this target"; exit 1)
+	$(KUBECTL_ADMIN) create namespace dex --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) create namespace monitoring --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n dex create secret generic dex-grafana-client --from-literal=DEX_GRAFANA_CLIENT_SECRET="$$GRAFANA_OAUTH_CLIENT_SECRET" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n monitoring create secret generic grafana-oauth --from-literal=GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET="$$GRAFANA_OAUTH_CLIENT_SECRET" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+
 monitoring-required-secrets-check: ## Confirm monitoring secrets exist before Flux reconciles monitoring
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@$(KUBECTL_ADMIN) -n monitoring get secret grafana-admin >/dev/null || (echo "Missing monitoring/grafana-admin. Run: export GRAFANA_ADMIN_PASSWORD='...' && make monitoring-grafana-secret"; exit 1)
+	@$(KUBECTL_ADMIN) -n monitoring get secret grafana-oauth >/dev/null || (echo "Missing monitoring/grafana-oauth. Run: export GRAFANA_OAUTH_CLIENT_SECRET='...' && make grafana-oauth-secret"; exit 1)
 
 monitoring-status: ## Show kube-prometheus-stack pods, services, routes, and PVCs
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
@@ -518,10 +527,11 @@ dex-required-secrets-check: ## Confirm Dex database and LDAP secrets exist befor
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@$(KUBECTL_ADMIN) -n dex get secret dex-postgres-app >/dev/null || (echo "Missing dex/dex-postgres-app. Run: export DEX_POSTGRES_PASSWORD='...' && make dex-postgres-secret"; exit 1)
 	@$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind >/dev/null || (echo "Missing dex/dex-ldap-bind. Run: export DEX_LDAP_BIND_DN='...' DEX_LDAP_BIND_PASSWORD='...' && make dex-ldap-secret"; exit 1)
+	@$(KUBECTL_ADMIN) -n dex get secret dex-grafana-client >/dev/null || (echo "Missing dex/dex-grafana-client. Run: export GRAFANA_OAUTH_CLIENT_SECRET='...' && make grafana-oauth-secret"; exit 1)
 
 dex-status: ## Show Dex pods, route, RBAC bindings, and OIDC discovery
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind dex-postgres-app -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
+	$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind dex-postgres-app dex-grafana-client -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
 	$(KUBECTL_ADMIN) -n dex get deployment dex
 	$(KUBECTL_ADMIN) -n dex get pods -l app.kubernetes.io/instance=dex -o wide
 	$(KUBECTL_ADMIN) -n dex get svc dex
