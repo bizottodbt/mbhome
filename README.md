@@ -1641,6 +1641,19 @@ Monitoring is managed by Flux under:
 kubernetes/infrastructure/monitoring/
 ```
 
+Metrics Server is managed by Flux under:
+
+```text
+kubernetes/infrastructure/metrics-server/
+```
+
+It provides the Kubernetes Metrics API for Headlamp usage views, `kubectl top`,
+and HPA resource metrics. Check it with:
+
+```bash
+make metrics-server-status
+```
+
 Create the Grafana admin secret before reconciling the monitoring stack:
 
 ```bash

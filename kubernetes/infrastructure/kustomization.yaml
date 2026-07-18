@@ -8,4 +8,5 @@ resources:
   - nfs-csi
   - gateway-api
   - monitoring
+  - metrics-server
   - minio
