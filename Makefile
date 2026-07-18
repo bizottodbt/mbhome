@@ -70,7 +70,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -350,7 +350,14 @@ kubernetes-oidc-merge-context: kubernetes-oidc-context ## Merge OIDC context int
 	echo "Login/test with:"; \
 	echo "unset KUBECONFIG"; \
 	echo "kubectl auth whoami"; \
+	echo "Or ignore the current shell KUBECONFIG with:"; \
+	echo "make kubernetes-oidc-whoami"; \
 	echo "That command invokes kubectl oidc-login if no valid token is cached."
+
+kubernetes-oidc-whoami: ## Test OIDC auth using the intended mbhome OIDC kubeconfig, ignoring ambient KUBECONFIG
+	@test -f "$(KUBERNETES_DEFAULT_KUBECONFIG)" || (echo "Missing $(KUBERNETES_DEFAULT_KUBECONFIG). Run make kubernetes-oidc-merge-context first"; exit 1)
+	KUBECONFIG="$(KUBERNETES_DEFAULT_KUBECONFIG)" kubectl config use-context "$(KUBERNETES_OIDC_CONTEXT)"
+	KUBECONFIG="$(KUBERNETES_DEFAULT_KUBECONFIG)" kubectl auth whoami
 
 talos-health: ## Check Talos and Kubernetes control-plane health
 	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
@@ -374,6 +381,20 @@ talos-upgrade: ## Upgrade Talos on the selected node (usage: make talos-upgrade 
 	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
 	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
 	TALOSCONFIG="$(TALOSCONFIG)" talosctl upgrade --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)" --image "$(TALOS_UPGRADE_IMAGE)" --drain=$(TALOS_UPGRADE_DRAIN) --wait
+
+talos-restart-kube-apiserver: ## Restart kube-apiserver containers sequentially on control planes after OIDC signing-key changes
+	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
+	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@nodes="$$($(KUBECTL_ADMIN) get nodes -l node-role.kubernetes.io/control-plane -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="InternalIP")].address}{" "}{end}')"; \
+	test -n "$$nodes" || (echo "No control-plane nodes found"; exit 1); \
+	for node in $$nodes; do \
+		container_id="$$(TALOSCONFIG="$(TALOSCONFIG)" talosctl containers --nodes "$$node" --endpoints "$(TALOS_ENDPOINT)" --kubernetes | awk '/kube-apiserver.*CONTAINER_RUNNING/ {print $$4; exit}')"; \
+		test -n "$$container_id" || (echo "Could not find running kube-apiserver container on $$node"; exit 1); \
+		echo "Restarting kube-apiserver on $$node"; \
+		TALOSCONFIG="$(TALOSCONFIG)" talosctl restart --kubernetes "$$container_id" --nodes "$$node" --endpoints "$(TALOS_ENDPOINT)"; \
+		sleep 10; \
+	done
 
 gateway-api-crds-install: ## Install or upgrade standard Gateway API CRDs before enabling Cilium Gateway API
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
@@ -454,9 +475,18 @@ dex-ldap-secret: ## Create/update the Dex AD LDAP bind secret from DEX_LDAP_BIND
 	$(KUBECTL_ADMIN) create namespace dex --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 	$(KUBECTL_ADMIN) -n dex create secret generic dex-ldap-bind --from-literal=DEX_LDAP_BIND_DN="$$DEX_LDAP_BIND_DN" --from-literal=DEX_LDAP_BIND_PASSWORD="$$DEX_LDAP_BIND_PASSWORD" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 
+dex-required-secrets-check: ## Confirm Dex database and LDAP secrets exist before Flux reconciles dependent layers
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@$(KUBECTL_ADMIN) -n dex get secret dex-postgres-app >/dev/null || (echo "Missing dex/dex-postgres-app. Run: export DEX_POSTGRES_PASSWORD='...' && make dex-postgres-secret"; exit 1)
+	@$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind >/dev/null || (echo "Missing dex/dex-ldap-bind. Run: export DEX_LDAP_BIND_DN='...' DEX_LDAP_BIND_PASSWORD='...' && make dex-ldap-secret"; exit 1)
+
 dex-status: ## Show Dex pods, route, RBAC bindings, and OIDC discovery
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	$(KUBECTL_ADMIN) -n dex get pods,svc,httproute
+	$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind dex-postgres-app -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
+	$(KUBECTL_ADMIN) -n dex get deployment dex
+	$(KUBECTL_ADMIN) -n dex get pods -l app.kubernetes.io/instance=dex -o wide
+	$(KUBECTL_ADMIN) -n dex get svc dex
+	$(KUBECTL_ADMIN) -n dex get httproute dex
 	$(KUBECTL_ADMIN) -n dex get deployment,replicaset
 	$(KUBECTL_ADMIN) -n flux-system get helmrelease dex
 	$(KUBECTL_ADMIN) get clusterrolebinding oidc-k8s-admins-cluster-admin oidc-k8s-viewers-view
@@ -510,7 +540,7 @@ flux-tree: ## Show Flux-managed layers and applied revisions
 	@$(KUBECTL_ADMIN) get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
 		-o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,CHART:.spec.chart.spec.chart,TARGET:.spec.targetNamespace' || true
 
-flux-reconcile: ## Force Flux to pull Git and reconcile mbhome platform layers
+flux-reconcile: dex-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	$(FLUX_ADMIN) reconcile source git flux-system --namespace flux-system
 	$(FLUX_ADMIN) reconcile kustomization infrastructure --namespace flux-system --with-source

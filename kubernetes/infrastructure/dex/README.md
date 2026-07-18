@@ -82,6 +82,13 @@ kubectl auth whoami
 If `KUBECONFIG` is still exported, plain `kubectl` keeps using that file
 instead of the merged default `~/.kube/config`.
 
+To test the merged mbhome OIDC context while ignoring any current shell
+`KUBECONFIG` override:
+
+```bash
+make kubernetes-oidc-whoami
+```
+
 If the Kubernetes API endpoint or cluster CA changes, regenerate the committed
 template from the Talos admin kubeconfig:
 
