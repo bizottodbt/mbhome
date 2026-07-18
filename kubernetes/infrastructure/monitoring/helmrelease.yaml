@@ -39,6 +39,9 @@ spec:
         etcd: false
         kubeProxy: false
 
+    prometheus-node-exporter:
+      namespaceOverride: kube-system
+
     grafana:
       admin:
         existingSecret: grafana-admin

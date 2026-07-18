@@ -37,3 +37,9 @@ make monitoring-status
 
 Prometheus stores 15 days of data with a 20GB retention size on `nfs-cache`.
 Grafana uses a 5Gi PVC and Alertmanager uses a 2Gi PVC.
+
+`prometheus-node-exporter` runs in `kube-system` instead of `monitoring`
+because it needs host namespaces, hostPath mounts, and a host port to collect
+node-level metrics. Keeping only the node-level DaemonSet in `kube-system`
+lets the rest of the monitoring stack stay under the `monitoring` namespace Pod
+Security `baseline` profile.

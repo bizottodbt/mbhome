@@ -1663,6 +1663,11 @@ https://prometheus.apps.mbhome.biz
 https://alertmanager.apps.mbhome.biz
 ```
 
+`prometheus-node-exporter` runs in `kube-system` because it requires host
+namespaces, hostPath mounts, and a host port for node metrics. The rest of the
+monitoring stack remains in the `monitoring` namespace under Pod Security
+`baseline`.
+
 Check issuance with:
 
 ```bash
