@@ -1542,7 +1542,12 @@ kubernetes/clusters/mbhome
 ```
 
 Flux writes its own controller manifests under `flux-system/` and reconciles the
-committed `infrastructure` Kustomization before the `apps` Kustomization.
+committed platform layers in order:
+
+- `infrastructure`: Cilium CRs, Gateway API, cert-manager, NFS CSI, and operators
+- `databases`: PostgreSQL clusters managed by CloudNativePG
+- `identity`: Dex and Kubernetes OIDC RBAC
+- `apps`: application workloads
 
 Check Flux reconciliation:
 
@@ -1637,6 +1642,37 @@ make cert-manager-status
 cert-manager is configured to use public recursive resolvers for DNS-01
 self-checks. This avoids false propagation failures when the cluster's internal
 DNS is authoritative for `mbhome.biz` or forwards through AD.
+
+CloudNativePG is managed by Flux under:
+
+```text
+kubernetes/infrastructure/cloudnative-pg/
+```
+
+It provides the PostgreSQL operator used by Dex. Check the operator with:
+
+```bash
+make cloudnative-pg-status
+```
+
+Dex's PostgreSQL database is managed by Flux under:
+
+```text
+kubernetes/databases/dex-postgres/
+```
+
+Create the database owner secret before reconciling the database layer:
+
+```bash
+export DEX_POSTGRES_PASSWORD='...'
+make dex-postgres-secret
+```
+
+Check the database cluster with:
+
+```bash
+make dex-postgres-status
+```
 
 Dex is managed by Flux under:
 

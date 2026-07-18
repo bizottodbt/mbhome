@@ -8,9 +8,23 @@ This deployment is internal-only:
 https://dex.apps.mbhome.biz
 ```
 
-Dex currently runs one replica because the deployment uses `storage.type:
-memory`. Multiple replicas with memory storage can split one browser login flow
-across pods and return `Bad Request: Requested resource does not exist`.
+Dex uses a dedicated CloudNativePG PostgreSQL database as its storage backend.
+That lets Dex run multiple replicas without splitting browser login state across
+pods.
+
+Create the database owner secret before Flux reconciles the database layer:
+
+```bash
+export DEX_POSTGRES_PASSWORD='...'
+make dex-postgres-secret
+```
+
+Check the database and operator with:
+
+```bash
+make cloudnative-pg-status
+make dex-postgres-status
+```
 
 The AD connector uses LDAPS on port `636`. It currently skips certificate
 verification while the DCs use lab self-signed LDAPS certificates; replace that
@@ -24,11 +38,11 @@ Refresh token idle lifetime: 7 days
 Refresh token absolute lifetime: 30 days
 ```
 
-Because Dex still uses memory storage, cached refresh sessions are lost when the
-Dex pod restarts. Move Dex to a persistent backend before depending on long
-sessions.
+Refresh sessions and signing keys are stored in Postgres, so restarting Dex pods
+does not wipe OIDC state. If the database is rebuilt from scratch, existing
+refresh sessions and signing keys are lost and users must log in again.
 
-Create the LDAP bind secret before Flux reconciles Dex:
+Create the LDAP bind secret before Flux reconciles the identity layer:
 
 ```bash
 export DEX_LDAP_BIND_DN='CN=svc_dex,OU=Service Accounts,OU=home,DC=mbhome,DC=biz'

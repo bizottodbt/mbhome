@@ -27,9 +27,9 @@ spec:
     envFrom:
       - secretRef:
           name: dex-ldap-bind
-    # Dex memory storage keeps login request state inside one pod. Use a single
-    # replica until Dex is moved to a shared storage backend.
-    replicaCount: 1
+      - secretRef:
+          name: dex-postgres-app
+    replicaCount: 2
     podSecurityContext:
       runAsNonRoot: true
       runAsUser: 65532
@@ -45,7 +45,15 @@ spec:
     config:
       issuer: https://dex.apps.mbhome.biz
       storage:
-        type: memory
+        type: postgres
+        config:
+          host: dex-postgres-rw.dex.svc.cluster.local
+          port: 5432
+          database: dex
+          user: dex
+          password: "{{ .Env.password }}"
+          ssl:
+            mode: require
       web:
         http: 0.0.0.0:5556
       oauth2:

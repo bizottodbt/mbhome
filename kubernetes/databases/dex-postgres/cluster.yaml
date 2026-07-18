@@ -1,0 +1,21 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: dex-postgres
+  namespace: dex
+  labels:
+    app.kubernetes.io/name: dex-postgres
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: dex
+      owner: dex
+      secret:
+        name: dex-postgres-app
+  storage:
+    storageClass: nfs-cache
+    size: 5Gi
+  monitoring:
+    enablePodMonitor: false
