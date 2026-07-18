@@ -15,6 +15,13 @@ gatewayAPI:
   gatewayClass:
     create: "true"
 
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
 l2announcements:
   enabled: true
 

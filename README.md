@@ -1374,6 +1374,7 @@ make gateway-api-crds-install
 make cilium-helm-repo
 make cilium-install
 make cilium-status
+make cilium-hubble-status
 make talos-health
 ```
 
@@ -1438,9 +1439,10 @@ kubernetes/infrastructure/cilium/values.yaml
 
 They use Kubernetes IPAM, Talos' cgroup mount, KubePrism on localhost port
 `7445`, Cilium kube-proxy replacement, Gateway API support, and L2
-announcements for on-LAN LoadBalancer services. The operator replica count
-starts at `1` for the first control-plane node; raise it after adding more
-control-plane nodes.
+announcements for on-LAN LoadBalancer services. Hubble Relay and Hubble UI are
+enabled, with the UI exposed internally at `https://hubble.apps.mbhome.biz`.
+The operator replica count starts at `1` for the first control-plane node;
+raise it after adding more control-plane nodes.
 
 Gateway API CRDs are installed explicitly by `make gateway-api-crds-install`
 because they are cluster-scoped APIs and need to exist before Cilium's Gateway
@@ -1586,7 +1588,7 @@ exports, but it does not create or export the top-level shares.
 Cilium remains a bootstrap dependency for now because Flux needs a working CNI
 before its controllers can run. Cilium values are still applied by
 `make cilium-install`, while Cilium custom resources such as LB IPAM pools and
-L2 announcement policies are reconciled by Flux:
+L2 announcement policies and the Hubble UI route are reconciled by Flux:
 
 ```text
 kubernetes/infrastructure/cilium/
