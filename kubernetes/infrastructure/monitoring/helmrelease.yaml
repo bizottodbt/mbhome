@@ -1,0 +1,94 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: kube-prometheus-stack
+  targetNamespace: monitoring
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: 87.17.0
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+      interval: 1h
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: kube-prometheus-stack
+
+    kubeProxy:
+      enabled: false
+
+    kubeEtcd:
+      enabled: false
+
+    defaultRules:
+      rules:
+        etcd: false
+        kubeProxy: false
+
+    grafana:
+      admin:
+        existingSecret: grafana-admin
+        userKey: admin-user
+        passwordKey: admin-password
+      grafana.ini:
+        server:
+          root_url: https://grafana.apps.mbhome.biz
+      persistence:
+        enabled: true
+        type: sts
+        storageClassName: nfs-cache
+        accessModes:
+          - ReadWriteOnce
+        size: 5Gi
+
+    prometheus:
+      prometheusSpec:
+        externalUrl: https://prometheus.apps.mbhome.biz
+        retention: 15d
+        retentionSize: 20GB
+        ruleSelectorNilUsesHelmValues: false
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        probeSelectorNilUsesHelmValues: false
+        scrapeConfigSelectorNilUsesHelmValues: false
+        serviceMonitorNamespaceSelector: {}
+        podMonitorNamespaceSelector: {}
+        ruleNamespaceSelector: {}
+        probeNamespaceSelector: {}
+        scrapeConfigNamespaceSelector: {}
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: nfs-cache
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 20Gi
+
+    alertmanager:
+      alertmanagerSpec:
+        externalUrl: https://alertmanager.apps.mbhome.biz
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: nfs-cache
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 2Gi

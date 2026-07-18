@@ -1635,6 +1635,34 @@ in the Gateway namespace as:
 gateway-system/apps-mbhome-biz-tls
 ```
 
+Monitoring is managed by Flux under:
+
+```text
+kubernetes/infrastructure/monitoring/
+```
+
+Create the Grafana admin secret before reconciling the monitoring stack:
+
+```bash
+export GRAFANA_ADMIN_PASSWORD='...'
+make monitoring-grafana-secret
+```
+
+Then reconcile and check the stack:
+
+```bash
+make flux-reconcile
+make monitoring-status
+```
+
+The first internal endpoints are:
+
+```text
+https://grafana.apps.mbhome.biz
+https://prometheus.apps.mbhome.biz
+https://alertmanager.apps.mbhome.biz
+```
+
 Check issuance with:
 
 ```bash

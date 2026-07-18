@@ -7,4 +7,5 @@ resources:
   - cert-manager
   - nfs-csi
   - gateway-api
+  - monitoring
   - minio

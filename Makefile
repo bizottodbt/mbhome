@@ -57,6 +57,7 @@ KUBERNETES_OIDC_USER ?= oidc
 KUBERNETES_OIDC_ISSUER_URL ?= https://dex.apps.mbhome.biz
 KUBERNETES_OIDC_CLIENT_ID ?= kubernetes
 DEX_POSTGRES_USER ?= dex
+GRAFANA_ADMIN_USER ?= admin
 CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
 GATEWAY_API_VERSION ?= v1.4.1
@@ -70,7 +71,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status monitoring-grafana-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -468,6 +469,25 @@ cloudnative-pg-status: ## Show CloudNativePG operator and CRD status
 	$(KUBECTL_ADMIN) -n cnpg-system get pods
 	$(KUBECTL_ADMIN) get crd clusters.postgresql.cnpg.io backups.postgresql.cnpg.io scheduledbackups.postgresql.cnpg.io
 
+monitoring-grafana-secret: ## Create/update the Grafana admin secret from GRAFANA_ADMIN_PASSWORD
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$GRAFANA_ADMIN_PASSWORD" || (echo "Export GRAFANA_ADMIN_PASSWORD before running this target"; exit 1)
+	$(KUBECTL_ADMIN) create namespace monitoring --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n monitoring create secret generic grafana-admin --from-literal=admin-user="$(GRAFANA_ADMIN_USER)" --from-literal=admin-password="$$GRAFANA_ADMIN_PASSWORD" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+
+monitoring-required-secrets-check: ## Confirm monitoring secrets exist before Flux reconciles monitoring
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@$(KUBECTL_ADMIN) -n monitoring get secret grafana-admin >/dev/null || (echo "Missing monitoring/grafana-admin. Run: export GRAFANA_ADMIN_PASSWORD='...' && make monitoring-grafana-secret"; exit 1)
+
+monitoring-status: ## Show kube-prometheus-stack pods, services, routes, and PVCs
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	$(KUBECTL_ADMIN) -n flux-system get helmrelease kube-prometheus-stack
+	$(KUBECTL_ADMIN) -n monitoring get pods -o wide
+	$(KUBECTL_ADMIN) -n monitoring get svc kube-prometheus-stack-grafana kube-prometheus-stack-prometheus kube-prometheus-stack-alertmanager
+	$(KUBECTL_ADMIN) -n monitoring get httproute grafana prometheus alertmanager
+	$(KUBECTL_ADMIN) -n monitoring get pvc
+	$(KUBECTL_ADMIN) get prometheus,alertmanager --all-namespaces
+
 dex-postgres-secret: ## Create/update the Dex Postgres application owner secret from DEX_POSTGRES_PASSWORD
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$DEX_POSTGRES_PASSWORD" || (echo "Export DEX_POSTGRES_PASSWORD before running this target"; exit 1)
@@ -551,7 +571,7 @@ flux-tree: ## Show Flux-managed layers and applied revisions
 	@$(KUBECTL_ADMIN) get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
 		-o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,CHART:.spec.chart.spec.chart,TARGET:.spec.targetNamespace' || true
 
-flux-reconcile: dex-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
+flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	$(FLUX_ADMIN) reconcile source git flux-system --namespace flux-system
 	$(FLUX_ADMIN) reconcile kustomization infrastructure --namespace flux-system --with-source
