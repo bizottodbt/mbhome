@@ -1450,6 +1450,39 @@ controller is enabled. Check them with:
 make gateway-api-status
 ```
 
+### Operate Talos nodes
+
+After the first config has been applied, Talos requires client certificates.
+Use the authenticated target for later control-plane config changes:
+
+```bash
+make talos-apply
+```
+
+To apply a future node, set both the node IP and node config name:
+
+```bash
+make talos-apply-insecure \
+  TALOS_NODE=192.0.2.71 \
+  TALOS_NODE_NAME=mbhome-talos-cp-02
+
+make talos-apply-insecure \
+  TALOS_NODE=192.0.2.81 \
+  TALOS_NODE_NAME=mbhome-talos-worker-01
+```
+
+For a single-node learning cluster only, you can temporarily allow workloads on
+the control plane by changing `allowSchedulingOnControlPlanes` to `true` in
+`infrastructure/talos/clusters/mbhome/patches/controlplane.yaml`, then
+regenerating and reapplying the machine config. For the enterprise-shaped path,
+keep it `false` and add separate worker nodes next.
+
+Destroy the first Talos VM when done testing:
+
+```bash
+make proxmox-talos-vm-destroy
+```
+
 ### Bootstrap Flux GitOps
 
 Flux is the preferred GitOps controller for this cluster. It is lightweight,
@@ -1509,15 +1542,30 @@ kubernetes/clusters/mbhome
 ```
 
 Flux writes its own controller manifests under `flux-system/` and reconciles the
-committed `infrastructure` Kustomization before the `apps` Kustomization. NFS
-CSI is managed here:
+committed `infrastructure` Kustomization before the `apps` Kustomization.
+
+Check Flux reconciliation:
+
+```bash
+make flux-status
+```
+
+Force a sync after pushing changes:
+
+```bash
+make flux-reconcile
+```
+
+### Flux-managed platform components
+
+NFS CSI is managed here:
 
 ```text
 kubernetes/infrastructure/nfs-csi/
 ```
 
-Edit the NFS CSI Flux manifests there before bootstrapping if the Unraid IP or
-exports change:
+Edit the NFS CSI Flux manifests there before Flux reconciles them if the
+Unraid IP or exports change:
 
 - `nfs-cache` `server` should be the Unraid 10 GbE IP, for example `10.20.90.10`
 - `nfs-cache` `share` should be a direct cache export, for example `/mnt/cache/k8s-fast`
@@ -1617,52 +1665,37 @@ After Flux deploys Dex, check the release and OIDC discovery endpoint:
 make dex-status
 ```
 
+The repo includes a credential-free OIDC kubeconfig template at
+`kubernetes/clusters/mbhome/kubeconfig.oidc.yaml`. Install it into your home
+directory for day-to-day access:
+
+```bash
+make kubernetes-oidc-context
+export KUBECONFIG="${HOME}/.kube/mbhome-oidc"
+kubectl auth whoami
+```
+
+`kubectl auth whoami` invokes `kubectl oidc-login` when no valid token is
+cached.
+
+Or merge the OIDC context into the default kubeconfig and select it:
+
+```bash
+make kubernetes-oidc-merge-context
+unset KUBECONFIG
+kubectl auth whoami
+```
+
+If `KUBECONFIG` is still exported, plain `kubectl` keeps using that file
+instead of the merged default `~/.kube/config`.
+
+If the Kubernetes API endpoint or cluster CA changes, regenerate the committed
+template from the Talos admin kubeconfig:
+
+```bash
+make dex-generate-oidc-kubeconfig
+```
+
 The initial RBAC bindings expect AD groups named `k8s-admins` and
 `k8s-viewers`. Kubernetes will see them as `oidc:k8s-admins` and
 `oidc:k8s-viewers` after the Talos API server OIDC settings are applied.
-
-After Flux is healthy, additional platform components should be added under the
-cluster path instead of installed by hand.
-
-Check Flux reconciliation:
-
-```bash
-make flux-status
-```
-
-Force a sync after pushing changes:
-
-```bash
-make flux-reconcile
-```
-
-After the first config has been applied, Talos requires client certificates.
-Use the authenticated target for later control-plane config changes:
-
-```bash
-make talos-apply
-```
-
-To apply a future node, set both the node IP and node config name:
-
-```bash
-make talos-apply-insecure \
-  TALOS_NODE=192.0.2.71 \
-  TALOS_NODE_NAME=mbhome-talos-cp-02
-
-make talos-apply-insecure \
-  TALOS_NODE=192.0.2.81 \
-  TALOS_NODE_NAME=mbhome-talos-worker-01
-```
-
-For a single-node learning cluster only, you can temporarily allow workloads on
-the control plane by changing `allowSchedulingOnControlPlanes` to `true` in
-`infrastructure/talos/clusters/mbhome/patches/controlplane.yaml`, then
-regenerating and reapplying the machine config. For the enterprise-shaped path,
-keep it `false` and add separate worker nodes next.
-
-Destroy the first Talos VM when done testing:
-
-```bash
-make proxmox-talos-vm-destroy
-```

@@ -44,6 +44,14 @@ TALOS_UPGRADE_VERSION ?= v1.13.6
 TALOS_UPGRADE_IMAGE ?= ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
 TALOS_UPGRADE_DRAIN ?= true
 KUBECONFIG_FILE ?= $(CURDIR)/$(TALOS_CLUSTER_DIR)/kubeconfig
+KUBERNETES_OIDC_ADMIN_CONTEXT ?= admin@$(TALOS_CLUSTER_NAME)
+KUBERNETES_OIDC_CONTEXT ?= oidc@$(TALOS_CLUSTER_NAME)
+KUBERNETES_OIDC_TEMPLATE ?= kubernetes/clusters/$(TALOS_CLUSTER_NAME)/kubeconfig.oidc.yaml
+KUBERNETES_OIDC_KUBECONFIG ?= $(HOME)/.kube/$(TALOS_CLUSTER_NAME)-oidc
+KUBERNETES_DEFAULT_KUBECONFIG ?= $(HOME)/.kube/config
+KUBERNETES_OIDC_USER ?= oidc
+KUBERNETES_OIDC_ISSUER_URL ?= https://dex.apps.mbhome.biz
+KUBERNETES_OIDC_CLIENT_ID ?= kubernetes
 CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
 GATEWAY_API_VERSION ?= v1.4.1
@@ -57,7 +65,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status dex-ldap-secret dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status dex-ldap-secret dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -268,6 +276,76 @@ talos-kubeconfig: ## Fetch Kubernetes kubeconfig from Talos
 	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
 	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
 	TALOSCONFIG="$(TALOSCONFIG)" talosctl kubeconfig "$(TALOS_CLUSTER_DIR)" --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)"
+
+dex-generate-oidc-kubeconfig: ## Regenerate the committed credential-free OIDC kubeconfig template from Talos admin kubeconfig
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@cluster=$$(kubectl --kubeconfig "$(KUBECONFIG_FILE)" config view --minify --context="$(KUBERNETES_OIDC_ADMIN_CONTEXT)" -o jsonpath='{.contexts[0].context.cluster}'); \
+	server=$$(kubectl --kubeconfig "$(KUBECONFIG_FILE)" config view --raw --minify --context="$(KUBERNETES_OIDC_ADMIN_CONTEXT)" -o jsonpath='{.clusters[0].cluster.server}'); \
+	ca=$$(kubectl --kubeconfig "$(KUBECONFIG_FILE)" config view --raw --minify --context="$(KUBERNETES_OIDC_ADMIN_CONTEXT)" -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'); \
+	if [ -z "$$cluster" ]; then echo "Could not find cluster from context $(KUBERNETES_OIDC_ADMIN_CONTEXT) in $(KUBECONFIG_FILE)"; exit 1; fi; \
+	if [ -z "$$server" ]; then echo "Could not find cluster server from context $(KUBERNETES_OIDC_ADMIN_CONTEXT) in $(KUBECONFIG_FILE)"; exit 1; fi; \
+	if [ -z "$$ca" ]; then echo "Could not find cluster certificate-authority-data from context $(KUBERNETES_OIDC_ADMIN_CONTEXT) in $(KUBECONFIG_FILE)"; exit 1; fi; \
+	tmpfile=$$(mktemp); \
+	kubectl --kubeconfig "$$tmpfile" config set-cluster "$$cluster" --server="$$server" >/dev/null; \
+	kubectl --kubeconfig "$$tmpfile" config set "clusters.$$cluster.certificate-authority-data" "$$ca" >/dev/null; \
+	kubectl --kubeconfig "$$tmpfile" config set-credentials "$(KUBERNETES_OIDC_USER)" \
+		--exec-api-version=client.authentication.k8s.io/v1 \
+		--exec-interactive-mode=IfAvailable \
+		--exec-command=kubectl \
+		--exec-arg=oidc-login \
+		--exec-arg=get-token \
+		--exec-arg=--oidc-issuer-url="$(KUBERNETES_OIDC_ISSUER_URL)" \
+		--exec-arg=--oidc-client-id="$(KUBERNETES_OIDC_CLIENT_ID)" \
+		--exec-arg=--oidc-extra-scope=email \
+		--exec-arg=--oidc-extra-scope=groups \
+		--exec-arg=--oidc-extra-scope=profile >/dev/null; \
+	kubectl --kubeconfig "$$tmpfile" config set-context "$(KUBERNETES_OIDC_CONTEXT)" --cluster="$$cluster" --user="$(KUBERNETES_OIDC_USER)" >/dev/null; \
+	kubectl --kubeconfig "$$tmpfile" config use-context "$(KUBERNETES_OIDC_CONTEXT)" >/dev/null; \
+	mkdir -p "$$(dirname "$(KUBERNETES_OIDC_TEMPLATE)")"; \
+	install -m 0644 "$$tmpfile" "$(KUBERNETES_OIDC_TEMPLATE)"; \
+	rm -f "$$tmpfile"; \
+	if grep -Eq 'client-certificate-data|client-key-data|(^|[[:space:]])token:|password|secret' "$(KUBERNETES_OIDC_TEMPLATE)"; then echo "Generated $(KUBERNETES_OIDC_TEMPLATE) appears to contain credentials"; exit 1; fi; \
+	echo "Regenerated $(KUBERNETES_OIDC_TEMPLATE)"
+
+kubernetes-oidc-context: ## Create/update local kubeconfig OIDC user and context for Dex
+	@test -f "$(KUBERNETES_OIDC_TEMPLATE)" || (echo "Missing $(KUBERNETES_OIDC_TEMPLATE)"; exit 1)
+	@kubectl oidc-login --help >/dev/null 2>&1 || (echo "Missing kubectl oidc-login plugin. Install kubelogin before using the OIDC context."; exit 1)
+	mkdir -p "$$(dirname "$(KUBERNETES_OIDC_KUBECONFIG)")"
+	install -m 0600 "$(KUBERNETES_OIDC_TEMPLATE)" "$(KUBERNETES_OIDC_KUBECONFIG)"
+	kubectl --kubeconfig "$(KUBERNETES_OIDC_KUBECONFIG)" config use-context "$(KUBERNETES_OIDC_CONTEXT)"
+	@echo "Created/updated OIDC kubeconfig: $(KUBERNETES_OIDC_KUBECONFIG)"
+	@echo "Use isolated kubeconfig with:"
+	@echo "export KUBECONFIG=$(KUBERNETES_OIDC_KUBECONFIG)"
+	@echo "kubectl auth whoami"
+	@echo "That command invokes kubectl oidc-login if no valid token is cached."
+	@echo "Or merge into the default kubeconfig with:"
+	@echo "make kubernetes-oidc-merge-context"
+
+kubernetes-oidc-merge-context: kubernetes-oidc-context ## Merge OIDC context into ~/.kube/config and select it
+	@mkdir -p "$$(dirname "$(KUBERNETES_DEFAULT_KUBECONFIG)")"
+	@if [ -n "$$KUBECONFIG" ]; then \
+		echo "WARNING: KUBECONFIG is currently set to $$KUBECONFIG"; \
+		echo "Plain kubectl commands will keep using that value until you unset it."; \
+	fi
+	@if [ -f "$(KUBERNETES_DEFAULT_KUBECONFIG)" ]; then \
+		backup="$(KUBERNETES_DEFAULT_KUBECONFIG).bak.$$(date +%Y%m%d%H%M%S)"; \
+		install -m 0600 "$(KUBERNETES_DEFAULT_KUBECONFIG)" "$$backup"; \
+		echo "Backed up $(KUBERNETES_DEFAULT_KUBECONFIG) to $$backup"; \
+	fi
+	@tmpfile=$$(mktemp); \
+	if [ -f "$(KUBERNETES_DEFAULT_KUBECONFIG)" ]; then \
+		KUBECONFIG="$(KUBERNETES_DEFAULT_KUBECONFIG):$(KUBERNETES_OIDC_KUBECONFIG)" kubectl config view --flatten > "$$tmpfile"; \
+	else \
+		KUBECONFIG="$(KUBERNETES_OIDC_KUBECONFIG)" kubectl config view --flatten > "$$tmpfile"; \
+	fi; \
+	install -m 0600 "$$tmpfile" "$(KUBERNETES_DEFAULT_KUBECONFIG)"; \
+	rm -f "$$tmpfile"; \
+	kubectl --kubeconfig "$(KUBERNETES_DEFAULT_KUBECONFIG)" config use-context "$(KUBERNETES_OIDC_CONTEXT)"; \
+	echo "Merged $(KUBERNETES_OIDC_CONTEXT) into $(KUBERNETES_DEFAULT_KUBECONFIG)"; \
+	echo "Login/test with:"; \
+	echo "unset KUBECONFIG"; \
+	echo "kubectl auth whoami"; \
+	echo "That command invokes kubectl oidc-login if no valid token is cached."
 
 talos-health: ## Check Talos and Kubernetes control-plane health
 	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)

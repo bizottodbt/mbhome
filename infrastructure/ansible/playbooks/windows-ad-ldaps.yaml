@@ -50,6 +50,7 @@
         $MinimumLifetime = (Get-Date).AddDays(30)
         $Changed = $false
         $RestartedNtds = $false
+        $LdapsTargetHost = $DnsNames[0]
 
         function Test-TcpPort {
           param(
@@ -100,6 +101,38 @@
           return $true
         }
 
+        function Test-LdapsTlsHandshake {
+          param(
+            [Parameter(Mandatory=$true)][string]$ConnectHost,
+            [Parameter(Mandatory=$true)][string]$TargetHost
+          )
+
+          $Client = New-Object System.Net.Sockets.TcpClient
+          $SslStream = $null
+          try {
+            $Connect = $Client.BeginConnect($ConnectHost, 636, $null, $null)
+            if (-not $Connect.AsyncWaitHandle.WaitOne(2000, $false)) {
+              return $false
+            }
+            $Client.EndConnect($Connect)
+
+            $Callback = {
+              param($Sender, $Certificate, $Chain, $SslPolicyErrors)
+              return $true
+            }
+            $SslStream = New-Object System.Net.Security.SslStream($Client.GetStream(), $false, $Callback)
+            $SslStream.AuthenticateAsClient($TargetHost)
+            return $true
+          } catch {
+            return $false
+          } finally {
+            if ($null -ne $SslStream) {
+              $SslStream.Dispose()
+            }
+            $Client.Close()
+          }
+        }
+
         $Existing = Get-ChildItem Cert:\LocalMachine\My |
           Where-Object {
             $_.HasPrivateKey -and
@@ -124,8 +157,26 @@
           $Changed = $true
         }
 
-        $LdapsListening = Test-TcpPort -HostName "127.0.0.1" -Port 636
-        if (-not $LdapsListening -and "{{ _windows_ad_ldaps_restart_ntds | ternary('true', 'false') }}" -eq "true") {
+        $TrustedRoot = Get-ChildItem Cert:\LocalMachine\Root |
+          Where-Object { $_.Thumbprint -eq $Existing.Thumbprint } |
+          Select-Object -First 1
+
+        if ($null -eq $TrustedRoot) {
+          $RootStore = New-Object System.Security.Cryptography.X509Certificates.X509Store(
+            [System.Security.Cryptography.X509Certificates.StoreName]::Root,
+            [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+          )
+          try {
+            $RootStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+            $RootStore.Add($Existing)
+          } finally {
+            $RootStore.Close()
+          }
+          $Changed = $true
+        }
+
+        $LdapsTlsReady = Test-LdapsTlsHandshake -ConnectHost "127.0.0.1" -TargetHost $LdapsTargetHost
+        if (($Changed -or -not $LdapsTlsReady) -and "{{ _windows_ad_ldaps_restart_ntds | ternary('true', 'false') }}" -eq "true") {
           Restart-Service -Name NTDS -Force
           $RestartedNtds = $true
           $Changed = $true
@@ -133,19 +184,21 @@
 
         $Deadline = (Get-Date).AddMinutes(3)
         do {
-          if (Test-TcpPort -HostName "127.0.0.1" -Port 636) {
-            $LdapsListening = $true
+          if (Test-LdapsTlsHandshake -ConnectHost "127.0.0.1" -TargetHost $LdapsTargetHost) {
+            $LdapsTlsReady = $true
             break
           }
           Start-Sleep -Seconds 5
         } while ((Get-Date) -lt $Deadline)
 
-        if (-not $LdapsListening) {
-          throw "LDAPS is not listening on TCP/636 after installing certificate $($Existing.Thumbprint). A DC reboot may be required."
+        if (-not $LdapsTlsReady) {
+          $TcpListening = Test-TcpPort -HostName "127.0.0.1" -Port 636
+          throw "LDAPS TLS handshake failed for target $LdapsTargetHost after installing certificate $($Existing.Thumbprint). TCP/636 listening: $TcpListening. A DC reboot may be required."
         }
 
         Write-Output "CHANGED=$Changed"
         Write-Output "RESTARTED_NTDS=$RestartedNtds"
+        Write-Output "LDAPS_TARGET_HOST=$LdapsTargetHost"
         Write-Output "LDAPS_CERT_THUMBPRINT=$($Existing.Thumbprint)"
         Write-Output "LDAPS_CERT_SUBJECT=$($Existing.Subject)"
         Write-Output "LDAPS_CERT_NOT_AFTER=$($Existing.NotAfter.ToString('o'))"

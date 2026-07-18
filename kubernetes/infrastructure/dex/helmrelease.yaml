@@ -50,6 +50,16 @@ spec:
         http: 0.0.0.0:5556
       oauth2:
         skipApprovalScreen: true
+      expiry:
+        signingKeys: 24h
+        idTokens: 1h
+        authRequests: 10m
+        deviceRequests: 5m
+        refreshTokens:
+          validIfNotUsedFor: 168h
+          absoluteLifetime: 720h
+          reuseInterval: 3s
+          disableRotation: false
       staticClients:
         - id: kubernetes
           public: true
