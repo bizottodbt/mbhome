@@ -44,7 +44,11 @@ TALOS_UPGRADE_VERSION ?= v1.13.6
 TALOS_UPGRADE_IMAGE ?= ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
 TALOS_UPGRADE_DRAIN ?= true
 KUBECONFIG_FILE ?= $(CURDIR)/$(TALOS_CLUSTER_DIR)/kubeconfig
-KUBERNETES_OIDC_ADMIN_CONTEXT ?= admin@$(TALOS_CLUSTER_NAME)
+KUBERNETES_ADMIN_CONTEXT ?= admin@$(TALOS_CLUSTER_NAME)
+KUBECTL_ADMIN := kubectl --kubeconfig "$(KUBECONFIG_FILE)" --context "$(KUBERNETES_ADMIN_CONTEXT)"
+FLUX_ADMIN := flux --kubeconfig "$(KUBECONFIG_FILE)" --context "$(KUBERNETES_ADMIN_CONTEXT)"
+HELM_ADMIN_KUBE_ARGS := --kubeconfig "$(KUBECONFIG_FILE)" --kube-context "$(KUBERNETES_ADMIN_CONTEXT)"
+KUBERNETES_OIDC_ADMIN_CONTEXT ?= $(KUBERNETES_ADMIN_CONTEXT)
 KUBERNETES_OIDC_CONTEXT ?= oidc@$(TALOS_CLUSTER_NAME)
 KUBERNETES_OIDC_TEMPLATE ?= kubernetes/clusters/$(TALOS_CLUSTER_NAME)/kubeconfig.oidc.yaml
 KUBERNETES_OIDC_KUBECONFIG ?= $(HOME)/.kube/$(TALOS_CLUSTER_NAME)-oidc
@@ -372,13 +376,13 @@ talos-upgrade: ## Upgrade Talos on the selected node (usage: make talos-upgrade 
 
 gateway-api-crds-install: ## Install or upgrade standard Gateway API CRDs before enabling Cilium Gateway API
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply --server-side -f "$(GATEWAY_API_STANDARD_INSTALL_URL)"
+	$(KUBECTL_ADMIN) apply --server-side -f "$(GATEWAY_API_STANDARD_INSTALL_URL)"
 
 gateway-api-status: ## Show Gateway API CRDs, classes, and gateways
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get crd gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io grpcroutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get gatewayclass
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get gateways.gateway.networking.k8s.io --all-namespaces -o wide
+	$(KUBECTL_ADMIN) get crd gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io grpcroutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io
+	$(KUBECTL_ADMIN) get gatewayclass
+	$(KUBECTL_ADMIN) get gateways.gateway.networking.k8s.io --all-namespaces -o wide
 
 cilium-helm-repo: ## Add/update the Cilium Helm repository
 	helm repo add cilium https://helm.cilium.io
@@ -387,76 +391,75 @@ cilium-helm-repo: ## Add/update the Cilium Helm repository
 cilium-install: ## Install or upgrade Cilium on the Talos Kubernetes cluster
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -f "$(CILIUM_DIR)/values.yaml" || (echo "Missing $(CILIUM_DIR)/values.yaml"; exit 1)
-	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" get crd gateways.gateway.networking.k8s.io >/dev/null || (echo "Run make gateway-api-crds-install before make cilium-install"; exit 1)
+	@$(KUBECTL_ADMIN) get crd gateways.gateway.networking.k8s.io >/dev/null || (echo "Run make gateway-api-crds-install before make cilium-install"; exit 1)
 	helm upgrade --install cilium cilium/cilium \
 		--version "$(CILIUM_VERSION)" \
 		--namespace kube-system \
-		--kubeconfig "$(KUBECONFIG_FILE)" \
+		$(HELM_ADMIN_KUBE_ARGS) \
 		--values "$(CILIUM_DIR)/values.yaml"
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout restart deployment/cilium-operator
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout restart ds/cilium
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout status deployment/cilium-operator --timeout=5m
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system rollout status ds/cilium --timeout=5m
+	$(KUBECTL_ADMIN) -n kube-system rollout restart deployment/cilium-operator
+	$(KUBECTL_ADMIN) -n kube-system rollout restart ds/cilium
+	$(KUBECTL_ADMIN) -n kube-system rollout status deployment/cilium-operator --timeout=5m
+	$(KUBECTL_ADMIN) -n kube-system rollout status ds/cilium --timeout=5m
 
 cilium-status: ## Show Cilium pods and Kubernetes node readiness
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l k8s-app=cilium -o wide
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l name=cilium-operator -o wide
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get nodes -o wide
+	$(KUBECTL_ADMIN) -n kube-system get pods -l k8s-app=cilium -o wide
+	$(KUBECTL_ADMIN) -n kube-system get pods -l name=cilium-operator -o wide
+	$(KUBECTL_ADMIN) get nodes -o wide
 
 cilium-uninstall: ## Remove Cilium from the cluster
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	helm uninstall cilium --namespace kube-system --kubeconfig "$(KUBECONFIG_FILE)"
+	helm uninstall cilium --namespace kube-system $(HELM_ADMIN_KUBE_ARGS)
 
 cert-manager-crds-install: ## Install or upgrade cert-manager CRDs before Flux reconciles cert-manager resources
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply --server-side -f "$(CERT_MANAGER_CRDS_URL)"
+	$(KUBECTL_ADMIN) apply --server-side -f "$(CERT_MANAGER_CRDS_URL)"
 
 cert-manager-cloudflare-secret: ## Create/update the Cloudflare DNS-01 API token secret from CLOUDFLARE_API_TOKEN
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$CLOUDFLARE_API_TOKEN" || (echo "Export CLOUDFLARE_API_TOKEN before running this target"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" create namespace cert-manager --dry-run=client -o yaml | kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply -f -
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n cert-manager create secret generic cloudflare-api-token --from-literal=api-token="$$CLOUDFLARE_API_TOKEN" --dry-run=client -o yaml | kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply -f -
+	$(KUBECTL_ADMIN) create namespace cert-manager --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n cert-manager create secret generic cloudflare-api-token --from-literal=api-token="$$CLOUDFLARE_API_TOKEN" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 
 cert-manager-status: ## Show cert-manager pods, issuers, and wildcard certificate status
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n cert-manager get pods
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get clusterissuers.cert-manager.io
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n gateway-system get certificates.cert-manager.io,certificaterequests.cert-manager.io,orders.acme.cert-manager.io,challenges.acme.cert-manager.io || true
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n gateway-system get secret apps-mbhome-biz-tls || true
+	$(KUBECTL_ADMIN) -n cert-manager get pods
+	$(KUBECTL_ADMIN) get clusterissuers.cert-manager.io
+	$(KUBECTL_ADMIN) -n gateway-system get certificates.cert-manager.io,certificaterequests.cert-manager.io,orders.acme.cert-manager.io,challenges.acme.cert-manager.io || true
+	$(KUBECTL_ADMIN) -n gateway-system get secret apps-mbhome-biz-tls || true
 
 dex-ldap-secret: ## Create/update the Dex AD LDAP bind secret from DEX_LDAP_BIND_DN and DEX_LDAP_BIND_PASSWORD
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$DEX_LDAP_BIND_DN" || (echo "Export DEX_LDAP_BIND_DN before running this target"; exit 1)
 	@test -n "$$DEX_LDAP_BIND_PASSWORD" || (echo "Export DEX_LDAP_BIND_PASSWORD before running this target"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" create namespace dex --dry-run=client -o yaml | kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply -f -
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex create secret generic dex-ldap-bind --from-literal=DEX_LDAP_BIND_DN="$$DEX_LDAP_BIND_DN" --from-literal=DEX_LDAP_BIND_PASSWORD="$$DEX_LDAP_BIND_PASSWORD" --dry-run=client -o yaml | kubectl --kubeconfig "$(KUBECONFIG_FILE)" apply -f -
+	$(KUBECTL_ADMIN) create namespace dex --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n dex create secret generic dex-ldap-bind --from-literal=DEX_LDAP_BIND_DN="$$DEX_LDAP_BIND_DN" --from-literal=DEX_LDAP_BIND_PASSWORD="$$DEX_LDAP_BIND_PASSWORD" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 
 dex-status: ## Show Dex pods, route, RBAC bindings, and OIDC discovery
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex get pods,svc,httproute
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex get deployment,replicaset
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get helmrelease dex
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get clusterrolebinding oidc-k8s-admins-cluster-admin oidc-k8s-viewers-view
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n dex get events --sort-by=.lastTimestamp | tail -20
+	$(KUBECTL_ADMIN) -n dex get pods,svc,httproute
+	$(KUBECTL_ADMIN) -n dex get deployment,replicaset
+	$(KUBECTL_ADMIN) -n flux-system get helmrelease dex
+	$(KUBECTL_ADMIN) get clusterrolebinding oidc-k8s-admins-cluster-admin oidc-k8s-viewers-view
+	$(KUBECTL_ADMIN) -n dex get events --sort-by=.lastTimestamp | tail -20
 	@curl -fsS https://dex.apps.mbhome.biz/.well-known/openid-configuration | sed -n '1,20p'
 
 nfs-csi-status: ## Show Flux-managed NFS CSI pods and StorageClasses
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l app=csi-nfs-controller -o wide
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n kube-system get pods -l app=csi-nfs-node -o wide
-	kubectl --kubeconfig "$(KUBECONFIG_FILE)" get storageclass
+	$(KUBECTL_ADMIN) -n kube-system get pods -l app=csi-nfs-controller -o wide
+	$(KUBECTL_ADMIN) -n kube-system get pods -l app=csi-nfs-node -o wide
+	$(KUBECTL_ADMIN) get storageclass
 
 flux-check: ## Check Flux prerequisites against the Kubernetes cluster
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	flux check --pre --kubeconfig "$(KUBECONFIG_FILE)"
+	$(FLUX_ADMIN) check --pre
 
 flux-bootstrap-github: ## Bootstrap Flux from this GitHub repo
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$GITHUB_TOKEN" || (echo "Export GITHUB_TOKEN with repo admin access before bootstrapping Flux"; exit 1)
 	@test -z "$$(git status --porcelain -- kubernetes)" || (echo "Commit and push kubernetes before bootstrapping Flux"; exit 1)
-	flux bootstrap github \
-		--kubeconfig "$(KUBECONFIG_FILE)" \
+	$(FLUX_ADMIN) bootstrap github \
 		--owner="$(FLUX_GITHUB_OWNER)" \
 		--repository="$(FLUX_GITHUB_REPOSITORY)" \
 		--branch="$(FLUX_GIT_BRANCH)" \
@@ -466,33 +469,33 @@ flux-bootstrap-github: ## Bootstrap Flux from this GitHub repo
 
 flux-status: ## Show Flux reconciliation state
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	flux get sources git --kubeconfig "$(KUBECONFIG_FILE)"
-	flux get sources helm --kubeconfig "$(KUBECONFIG_FILE)" || true
-	flux get kustomizations --kubeconfig "$(KUBECONFIG_FILE)" || true
-	flux get helmreleases --all-namespaces --kubeconfig "$(KUBECONFIG_FILE)" || true
+	$(FLUX_ADMIN) get sources git
+	$(FLUX_ADMIN) get sources helm || true
+	$(FLUX_ADMIN) get kustomizations || true
+	$(FLUX_ADMIN) get helmreleases --all-namespaces || true
 
 flux-tree: ## Show Flux-managed layers and applied revisions
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@echo "==> Git sources"
-	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get gitrepositories.source.toolkit.fluxcd.io \
+	@$(KUBECTL_ADMIN) -n flux-system get gitrepositories.source.toolkit.fluxcd.io \
 		-o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.artifact.revision,URL:.spec.url' || true
 	@echo ""
 	@echo "==> Flux Kustomizations"
-	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get kustomizations.kustomize.toolkit.fluxcd.io \
+	@$(KUBECTL_ADMIN) -n flux-system get kustomizations.kustomize.toolkit.fluxcd.io \
 		-o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,PATH:.spec.path,DEPENDS-ON:.spec.dependsOn[*].name' || true
 	@echo ""
 	@echo "==> Helm sources"
-	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" -n flux-system get helmrepositories.source.toolkit.fluxcd.io \
+	@$(KUBECTL_ADMIN) -n flux-system get helmrepositories.source.toolkit.fluxcd.io \
 		-o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.artifact.revision,URL:.spec.url' || true
 	@echo ""
 	@echo "==> Helm releases"
-	@kubectl --kubeconfig "$(KUBECONFIG_FILE)" get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
+	@$(KUBECTL_ADMIN) get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
 		-o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,CHART:.spec.chart.spec.chart,TARGET:.spec.targetNamespace' || true
 
 flux-reconcile: ## Force Flux to pull Git and reconcile mbhome infrastructure
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	flux reconcile source git flux-system --namespace flux-system --kubeconfig "$(KUBECONFIG_FILE)"
-	flux reconcile kustomization infrastructure --namespace flux-system --with-source --kubeconfig "$(KUBECONFIG_FILE)"
+	$(FLUX_ADMIN) reconcile source git flux-system --namespace flux-system
+	$(FLUX_ADMIN) reconcile kustomization infrastructure --namespace flux-system --with-source
 
 proxmox-ad-vms-init: ## Initialize Terraform for AD/domain-controller VM shells
 	cd $(PROXMOX_AD_TF_DIR) && terraform init
