@@ -9,4 +9,5 @@ resources:
   - gateway-api
   - monitoring
   - metrics-server
+  - vault
   - minio

@@ -1654,6 +1654,31 @@ and HPA resource metrics. Check it with:
 make metrics-server-status
 ```
 
+Vault is managed by Flux under:
+
+```text
+kubernetes/infrastructure/vault/
+```
+
+It is deployed as an internal-only Vault server at:
+
+```text
+https://vault.apps.mbhome.biz
+```
+
+The first deployment uses HA Raft mode with a single replica and persistent
+storage on `nfs-cache`. Vault starts uninitialized and sealed by design. Check
+the deployment with:
+
+```bash
+make vault-status
+```
+
+Initialize and unseal Vault manually, then store the unseal keys and initial
+root token outside Git. Keep the existing Make secret targets for bootstrap and
+break-glass until Vault Secrets Operator is added and the current secrets are
+migrated.
+
 Create the Grafana admin secret before reconciling the monitoring stack:
 
 ```bash
