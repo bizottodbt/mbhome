@@ -58,6 +58,12 @@ KUBERNETES_OIDC_ISSUER_URL ?= https://dex.apps.mbhome.biz
 KUBERNETES_OIDC_CLIENT_ID ?= kubernetes
 DEX_POSTGRES_USER ?= dex
 GRAFANA_ADMIN_USER ?= admin
+VAULT_POD ?= vault-0
+VAULT_UNSEAL_STEPS ?= 3
+VAULT_KEY_SHARES ?= 5
+VAULT_KEY_THRESHOLD ?= 3
+VAULT_AUDIT_PATH ?= /vault/audit/vault-audit.log
+VAULT_KV_MOUNT ?= kv
 CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
 GATEWAY_API_VERSION ?= v1.4.1
@@ -71,7 +77,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status vault-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status vault-status vault-init vault-unseal vault-bootstrap monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -484,8 +490,35 @@ vault-status: ## Show Vault release, pods, services, route, PVCs, and seal statu
 	$(KUBECTL_ADMIN) -n vault get pods -l app.kubernetes.io/instance=vault -o wide
 	$(KUBECTL_ADMIN) -n vault get svc vault vault-active vault-standby vault-internal vault-ui
 	$(KUBECTL_ADMIN) -n vault get httproute vault
+	$(KUBECTL_ADMIN) -n vault get httproute vault -o jsonpath='{range .status.parents[*].conditions[*]}{.type}={.status} {.reason} {.message}{"\n"}{end}' || true
 	$(KUBECTL_ADMIN) -n vault get pvc
 	$(KUBECTL_ADMIN) -n vault exec vault-0 -- vault status || true
+
+vault-init: ## Initialize Vault and print unseal keys/root token once
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@echo "This initializes $(VAULT_POD) with $(VAULT_KEY_SHARES) key shares and threshold $(VAULT_KEY_THRESHOLD)."
+	@echo "The unseal keys and initial root token are printed once. Store them outside Git before closing this terminal."
+	@printf "Type 'initialize vault' to continue: "; \
+	read confirm; \
+	if [ "$$confirm" != "initialize vault" ]; then echo "Cancelled"; exit 1; fi
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault operator init -key-shares="$(VAULT_KEY_SHARES)" -key-threshold="$(VAULT_KEY_THRESHOLD)"
+
+vault-unseal: ## Interactively submit Vault unseal keys
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@for step in $$(seq 1 "$(VAULT_UNSEAL_STEPS)"); do \
+		echo "Vault unseal step $$step/$(VAULT_UNSEAL_STEPS) for $(VAULT_POD)"; \
+		$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault operator unseal; \
+	done
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault status || true
+
+vault-bootstrap: ## Interactively login with root token, enable audit logging and KV v2
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@echo "Enter the initial root token at the Vault prompt. It will be stored only inside $(VAULT_POD)'s transient CLI token file for this bootstrap."
+	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'vault audit list -format=json | grep -q "\"file/\"" || vault audit enable file file_path="$(VAULT_AUDIT_PATH)"'
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'vault secrets list -format=json | grep -q "\"$(VAULT_KV_MOUNT)/\"" || vault secrets enable -path="$(VAULT_KV_MOUNT)" kv-v2'
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault status || true
 
 monitoring-grafana-secret: ## Create/update the Grafana admin secret from GRAFANA_ADMIN_PASSWORD
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)

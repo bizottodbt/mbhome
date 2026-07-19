@@ -1674,10 +1674,21 @@ the deployment with:
 make vault-status
 ```
 
-Initialize and unseal Vault manually, then store the unseal keys and initial
-root token outside Git. Keep the existing Make secret targets for bootstrap and
-break-glass until Vault Secrets Operator is added and the current secrets are
-migrated.
+Initialize Vault once, then store the unseal keys and initial root token outside
+Git before closing the terminal:
+
+```bash
+make vault-init
+make vault-unseal
+make vault-bootstrap
+make vault-status
+```
+
+`vault-init` defaults to 5 key shares with a threshold of 3. `vault-unseal`
+prompts for the unseal keys. `vault-bootstrap` prompts for the initial root
+token, enables file audit logging, and enables the initial `kv/` KV v2 mount.
+Keep the existing Make secret targets for bootstrap and break-glass until Vault
+Secrets Operator is added and the current secrets are migrated.
 
 Create the Grafana admin secret before reconciling the monitoring stack:
 

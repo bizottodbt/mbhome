@@ -25,45 +25,78 @@ Check deployment state:
 make vault-status
 ```
 
-Initialize Vault once:
+The internal Gateway routes `vault.apps.mbhome.biz` to the chart's
+`vault-active` service. That service follows the active Vault Raft leader and is
+the right target when the deployment later grows beyond one replica.
+
+Initialize Vault once. This prints the unseal keys and initial root token one
+time:
 
 ```bash
-kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
-  --context admin@mbhome \
-  -n vault exec vault-0 -- vault operator init -key-shares=5 -key-threshold=3
+make vault-init
 ```
 
-Store the unseal keys and initial root token outside Git.
+Store the unseal keys and initial root token outside Git before closing the
+terminal. The default init settings are:
+
+```text
+key shares: 5
+key threshold: 3
+```
+
+Override them only if you intentionally want a different Shamir key ceremony:
+
+```bash
+make vault-init VAULT_KEY_SHARES=7 VAULT_KEY_THRESHOLD=4
+```
 
 Unseal after initialization:
 
 ```bash
-kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
-  --context admin@mbhome \
-  -n vault exec -it vault-0 -- vault operator unseal
+make vault-unseal
 ```
 
-Run the unseal command with enough unseal keys to satisfy the threshold.
+The target prompts for `VAULT_UNSEAL_STEPS`, which defaults to `3`, matching the
+recommended init threshold in this repo. Override it if you initialized Vault
+with a different threshold:
+
+```bash
+make vault-unseal VAULT_UNSEAL_STEPS=5
+```
 
 After logging in with the root token, enable audit logging to the mounted audit
 PVC:
 
 ```bash
-kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
-  --context admin@mbhome \
-  -n vault exec -it vault-0 -- vault login
-
-kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
-  --context admin@mbhome \
-  -n vault exec vault-0 -- vault audit enable file file_path=/vault/audit/vault-audit.log
+make vault-bootstrap
 ```
 
-Then create the initial KV v2 engine for mbhome platform secrets:
+That target prompts for the initial root token, enables file audit logging, and
+enables the initial KV v2 engine for mbhome platform secrets. The defaults are:
+
+```text
+audit path: /vault/audit/vault-audit.log
+KV v2 mount: kv/
+```
+
+The root token is used interactively through the Vault CLI and the CLI token file
+is removed from the pod at the end of the target.
+
+The full first-run flow is:
 
 ```bash
-kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
-  --context admin@mbhome \
-  -n vault exec vault-0 -- vault secrets enable -path=kv kv-v2
+make vault-status
+make vault-init
+make vault-unseal
+make vault-bootstrap
+make vault-status
+```
+
+After the final status check, Vault should report:
+
+```text
+Initialized true
+Sealed false
 ```
 
 For this first stage, keep the existing Make secret targets. They remain useful
