@@ -140,3 +140,12 @@ because Vault is configured with `default` as the OIDC default role.
 For this first stage, keep the existing Make secret targets. They remain useful
 for bootstrap and break-glass until Vault Secrets Operator is deployed and the
 current secrets are migrated into Vault.
+
+Vault's Kubernetes auth method is used by Vault Secrets Operator. The repo grants
+the Vault server service account TokenReview access through
+`kubernetes-auth-rbac.yaml`, then the auth method is configured interactively:
+
+```bash
+make vault-secrets-operator-bootstrap
+make vault-secrets-operator-status
+```

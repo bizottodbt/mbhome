@@ -10,4 +10,5 @@ resources:
   - monitoring
   - metrics-server
   - vault
+  - vault-secrets-operator
   - minio

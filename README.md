@@ -1711,6 +1711,27 @@ vault-readers -> vault-reader
 Keep the existing Make secret targets for bootstrap and break-glass until Vault
 Secrets Operator is added and the current secrets are migrated.
 
+Vault Secrets Operator is managed by Flux under:
+
+```text
+kubernetes/infrastructure/vault-secrets-operator/
+```
+
+It uses Vault Kubernetes auth and the internal Vault service
+`http://vault-active.vault.svc.cluster.local:8200`. Bootstrap the Vault-side
+auth role after Vault is initialized, unsealed, and reconciled:
+
+```bash
+make flux-reconcile
+make vault-secrets-operator-bootstrap
+make vault-secrets-operator-status
+```
+
+The initial operator policy is read-only and scoped to future secret paths under
+`kv/platform/*` and `kv/apps/*`. Existing Kubernetes Secrets stay on the current
+Make targets until their matching Vault KV entries and `VaultStaticSecret`
+resources are added.
+
 Create the Grafana admin secret before reconciling the monitoring stack:
 
 ```bash
