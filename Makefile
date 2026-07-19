@@ -302,6 +302,7 @@ dex-generate-oidc-kubeconfig: ## Regenerate the committed credential-free OIDC k
 		--exec-arg=get-token \
 		--exec-arg=--oidc-issuer-url="$(KUBERNETES_OIDC_ISSUER_URL)" \
 		--exec-arg=--oidc-client-id="$(KUBERNETES_OIDC_CLIENT_ID)" \
+		--exec-arg=--skip-open-browser \
 		--exec-arg=--oidc-extra-scope=email \
 		--exec-arg=--oidc-extra-scope=groups \
 		--exec-arg=--oidc-extra-scope=profile >/dev/null; \
@@ -340,7 +341,7 @@ kubernetes-oidc-merge-context: kubernetes-oidc-context ## Merge OIDC context int
 	fi
 	@tmpfile=$$(mktemp); \
 	if [ -f "$(KUBERNETES_DEFAULT_KUBECONFIG)" ]; then \
-		KUBECONFIG="$(KUBERNETES_DEFAULT_KUBECONFIG):$(KUBERNETES_OIDC_KUBECONFIG)" kubectl config view --flatten > "$$tmpfile"; \
+		KUBECONFIG="$(KUBERNETES_OIDC_KUBECONFIG):$(KUBERNETES_DEFAULT_KUBECONFIG)" kubectl config view --flatten > "$$tmpfile"; \
 	else \
 		KUBECONFIG="$(KUBERNETES_OIDC_KUBECONFIG)" kubectl config view --flatten > "$$tmpfile"; \
 	fi; \

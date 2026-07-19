@@ -85,7 +85,9 @@ kubectl auth whoami
 ```
 
 `kubectl auth whoami` invokes `kubectl oidc-login` when no valid token is
-cached.
+cached. The committed OIDC kubeconfig uses `--skip-open-browser`, so the plugin
+prints the localhost callback URL instead of opening browser tabs automatically.
+That callback then redirects to Dex.
 
 Or merge the OIDC context into the default kubeconfig and select it:
 
