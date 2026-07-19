@@ -75,6 +75,9 @@ spec:
           config: |
             ui = true
             disable_mlock = true
+            # Temporary break-glass access for root-token regeneration.
+            # Remove immediately after `vault operator generate-root` succeeds.
+            enable_unauthenticated_access = ["generate-root"]
 
             listener "tcp" {
               tls_disable = 1
