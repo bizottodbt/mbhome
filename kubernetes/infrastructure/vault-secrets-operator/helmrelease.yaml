@@ -28,6 +28,19 @@ spec:
     crds: CreateReplace
     remediation:
       retries: 3
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              group: secrets.hashicorp.com
+              version: v1beta1
+              kind: VaultAuth
+              name: default
+              namespace: vault-secrets-operator
+            patch: |
+              - op: replace
+                path: /spec/namespace
+                value: ""
   values:
     controller:
       replicas: 1
