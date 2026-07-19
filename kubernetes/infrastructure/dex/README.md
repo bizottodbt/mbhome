@@ -74,6 +74,23 @@ export GRAFANA_OAUTH_CLIENT_SECRET='...'
 make grafana-oauth-secret
 ```
 
+Vault also uses Dex as a confidential OAuth client:
+
+```text
+client id: vault
+UI redirect URI: https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
+CLI redirect URI: http://localhost:8250/oidc/callback
+```
+
+Create the shared Vault client secret before reconciling Flux. The generated
+value is stored in `dex/dex-vault-client` for Dex and is entered into Vault by
+the interactive bootstrap target:
+
+```bash
+export VAULT_OIDC_CLIENT_SECRET='...'
+make vault-oidc-secret
+```
+
 The repo includes a credential-free OIDC kubeconfig template at
 `kubernetes/clusters/mbhome/kubeconfig.oidc.yaml`. Install it into your home
 directory for day-to-day access:

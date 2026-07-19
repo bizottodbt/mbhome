@@ -95,6 +95,24 @@ groups:
     category: Security
     description: Users with Grafana viewer access through Dex OIDC
 
+  - name: vault-admins
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Vault administrator access through Dex OIDC
+
+  - name: vault-users
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Vault secret write access through Dex OIDC
+
+  - name: vault-readers
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with read-only Vault access through Dex OIDC
+
 users:
   - username: admin_example
     display_name: Admin Example
@@ -111,6 +129,7 @@ users:
       - windows-users
       - k8s-admins
       - grafana-admins
+      - vault-admins
     enabled: true
     password: CHANGE_ME_INITIAL_PASSWORD
     must_change_password: false

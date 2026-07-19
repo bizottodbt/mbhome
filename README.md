@@ -1687,6 +1687,27 @@ make vault-status
 `vault-init` defaults to 5 key shares with a threshold of 3. `vault-unseal`
 prompts for the unseal keys. `vault-bootstrap` prompts for the initial root
 token, enables file audit logging, and enables the initial `kv/` KV v2 mount.
+
+Vault uses Dex for AD-backed human login. Create one random client secret for
+the Dex Vault OAuth client, reconcile Dex, and then bootstrap the Vault OIDC auth
+method:
+
+```bash
+export VAULT_OIDC_CLIENT_SECRET='...'
+make vault-oidc-secret
+# Commit and push the Dex client change before reconciling.
+make flux-reconcile
+make vault-oidc-bootstrap
+```
+
+`vault-oidc-bootstrap` maps AD groups from Dex into Vault policies:
+
+```text
+vault-admins  -> vault-admin
+vault-users   -> vault-user
+vault-readers -> vault-reader
+```
+
 Keep the existing Make secret targets for bootstrap and break-glass until Vault
 Secrets Operator is added and the current secrets are migrated.
 

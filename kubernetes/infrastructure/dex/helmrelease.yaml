@@ -31,6 +31,8 @@ spec:
           name: dex-postgres-app
       - secretRef:
           name: dex-grafana-client
+      - secretRef:
+          name: dex-vault-client
     replicaCount: 2
     podSecurityContext:
       runAsNonRoot: true
@@ -84,6 +86,12 @@ spec:
           name: Grafana
           redirectURIs:
             - https://grafana.apps.mbhome.biz/login/generic_oauth
+        - id: vault
+          secret: "{{ .Env.DEX_VAULT_CLIENT_SECRET }}"
+          name: Vault
+          redirectURIs:
+            - https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
+            - http://localhost:8250/oidc/callback
       connectors:
         - type: ldap
           id: ad

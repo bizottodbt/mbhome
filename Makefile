@@ -64,6 +64,17 @@ VAULT_KEY_SHARES ?= 5
 VAULT_KEY_THRESHOLD ?= 3
 VAULT_AUDIT_PATH ?= /vault/audit/vault-audit.log
 VAULT_KV_MOUNT ?= kv
+VAULT_OIDC_ISSUER_URL ?= https://dex.apps.mbhome.biz
+VAULT_OIDC_CLIENT_ID ?= vault
+VAULT_OIDC_DEFAULT_ROLE ?= default
+VAULT_OIDC_UI_REDIRECT_URI ?= https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
+VAULT_OIDC_CLI_REDIRECT_URI ?= http://localhost:8250/oidc/callback
+VAULT_ADMIN_GROUP ?= vault-admins
+VAULT_USER_GROUP ?= vault-users
+VAULT_READER_GROUP ?= vault-readers
+VAULT_ADMIN_POLICY ?= vault-admin
+VAULT_USER_POLICY ?= vault-user
+VAULT_READER_POLICY ?= vault-reader
 CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
 GATEWAY_API_VERSION ?= v1.4.1
@@ -77,7 +88,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status vault-status vault-init vault-unseal vault-bootstrap monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -520,6 +531,26 @@ vault-bootstrap: ## Interactively login with root token, enable audit logging an
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault status || true
 
+vault-oidc-secret: ## Create/update the Dex Vault OAuth client secret from VAULT_OIDC_CLIENT_SECRET
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$VAULT_OIDC_CLIENT_SECRET" || (echo "Export VAULT_OIDC_CLIENT_SECRET before running this target"; exit 1)
+	$(KUBECTL_ADMIN) create namespace dex --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n dex create secret generic dex-vault-client --from-literal=DEX_VAULT_CLIENT_SECRET="$$VAULT_OIDC_CLIENT_SECRET" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+
+vault-oidc-bootstrap: ## Interactively configure Vault OIDC auth against Dex
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$VAULT_OIDC_CLIENT_SECRET" || (echo "Export VAULT_OIDC_CLIENT_SECRET before running this target"; exit 1)
+	@echo "Enter a Vault token with enough privilege to configure auth methods, policies, and identity groups."
+	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'vault auth list | grep -q "^oidc/" || vault auth enable oidc'
+	@printf '%s' "$$VAULT_OIDC_CLIENT_SECRET" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r client_secret; vault write auth/oidc/config oidc_discovery_url="$(VAULT_OIDC_ISSUER_URL)" oidc_client_id="$(VAULT_OIDC_CLIENT_ID)" oidc_client_secret="$$client_secret" default_role="$(VAULT_OIDC_DEFAULT_ROLE)"'
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault write auth/oidc/role/"$(VAULT_OIDC_DEFAULT_ROLE)" role_type="oidc" user_claim="email" groups_claim="groups" oidc_scopes="openid,email,profile,groups" allowed_redirect_uris="$(VAULT_OIDC_UI_REDIRECT_URI)" allowed_redirect_uris="$(VAULT_OIDC_CLI_REDIRECT_URI)" token_policies="default" ttl="1h" max_ttl="8h"
+	@printf '%s\n' 'path "*" {' '  capabilities = ["create", "read", "update", "delete", "list", "sudo"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_ADMIN_POLICY)" -
+	@printf '%s\n' 'path "sys/mounts" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata" {' '  capabilities = ["list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/*" {' '  capabilities = ["create", "read", "update", "delete"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_USER_POLICY)" -
+	@printf '%s\n' 'path "sys/mounts" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata" {' '  capabilities = ["list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/*" {' '  capabilities = ["read"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_READER_POLICY)" -
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'set -eu; accessor=$$(vault read -field=accessor sys/auth/oidc); for mapping in "$(VAULT_ADMIN_GROUP):$(VAULT_ADMIN_POLICY)" "$(VAULT_USER_GROUP):$(VAULT_USER_POLICY)" "$(VAULT_READER_GROUP):$(VAULT_READER_POLICY)"; do group="$${mapping%%:*}"; policy="$${mapping#*:}"; vault write identity/group name="$$group" type="external" policies="$$policy" >/dev/null; group_id=$$(vault read -field=id identity/group/name/"$$group"); vault write identity/group-alias name="$$group" mount_accessor="$$accessor" canonical_id="$$group_id" >/dev/null || true; done'
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
+
 monitoring-grafana-secret: ## Create/update the Grafana admin secret from GRAFANA_ADMIN_PASSWORD
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$GRAFANA_ADMIN_PASSWORD" || (echo "Export GRAFANA_ADMIN_PASSWORD before running this target"; exit 1)
@@ -571,10 +602,11 @@ dex-required-secrets-check: ## Confirm Dex database and LDAP secrets exist befor
 	@$(KUBECTL_ADMIN) -n dex get secret dex-postgres-app >/dev/null || (echo "Missing dex/dex-postgres-app. Run: export DEX_POSTGRES_PASSWORD='...' && make dex-postgres-secret"; exit 1)
 	@$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind >/dev/null || (echo "Missing dex/dex-ldap-bind. Run: export DEX_LDAP_BIND_DN='...' DEX_LDAP_BIND_PASSWORD='...' && make dex-ldap-secret"; exit 1)
 	@$(KUBECTL_ADMIN) -n dex get secret dex-grafana-client >/dev/null || (echo "Missing dex/dex-grafana-client. Run: export GRAFANA_OAUTH_CLIENT_SECRET='...' && make grafana-oauth-secret"; exit 1)
+	@$(KUBECTL_ADMIN) -n dex get secret dex-vault-client >/dev/null || (echo "Missing dex/dex-vault-client. Run: export VAULT_OIDC_CLIENT_SECRET='...' && make vault-oidc-secret"; exit 1)
 
 dex-status: ## Show Dex pods, route, RBAC bindings, and OIDC discovery
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind dex-postgres-app dex-grafana-client -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
+	$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind dex-postgres-app dex-grafana-client dex-vault-client -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
 	$(KUBECTL_ADMIN) -n dex get deployment dex
 	$(KUBECTL_ADMIN) -n dex get pods -l app.kubernetes.io/instance=dex -o wide
 	$(KUBECTL_ADMIN) -n dex get svc dex

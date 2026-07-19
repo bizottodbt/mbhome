@@ -99,6 +99,44 @@ Initialized true
 Sealed false
 ```
 
+Dex provides the human login path for Vault. Create a random OAuth client
+secret locally, store it in the Dex namespace, reconcile Dex, and then bootstrap
+Vault's OIDC auth method:
+
+```bash
+export VAULT_OIDC_CLIENT_SECRET='...'
+make vault-oidc-secret
+# Commit and push the Dex client change before reconciling.
+make flux-reconcile
+make vault-oidc-bootstrap
+```
+
+`vault-oidc-bootstrap` prompts for a Vault token with enough privilege to manage
+auth methods, policies, and identity groups. Use the initial root token for the
+first run, then retire it once regular admin access is proven.
+
+The default OIDC role is named `default` and accepts both the Vault UI and CLI
+callback URLs:
+
+```text
+https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
+http://localhost:8250/oidc/callback
+```
+
+AD groups are mapped through Dex group claims:
+
+```text
+vault-admins  -> vault-admin policy
+vault-users   -> vault-user policy
+vault-readers -> vault-reader policy
+```
+
+Users outside those groups can authenticate at Dex, but they only receive the
+Vault `default` policy.
+
+For the Vault UI, select the `oidc` auth method. The role can be left empty
+because Vault is configured with `default` as the OIDC default role.
+
 For this first stage, keep the existing Make secret targets. They remain useful
 for bootstrap and break-glass until Vault Secrets Operator is deployed and the
 current secrets are migrated into Vault.
