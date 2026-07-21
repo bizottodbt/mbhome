@@ -547,9 +547,9 @@ vault-unseal: ## Interactively submit Vault unseal keys to all Vault pods, or VA
 		fi; \
 		for step in $$(seq 1 "$(VAULT_UNSEAL_STEPS)"); do \
 			echo "Vault unseal step $$step/$(VAULT_UNSEAL_STEPS) for $$pod"; \
-			$(KUBECTL_ADMIN) -n vault exec -it "$$pod" -- vault operator unseal; \
+			$(KUBECTL_ADMIN) -n vault exec -it "$$pod" -- vault operator unseal || exit 1; \
 		done; \
-		$(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status || true; \
+		$(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status || exit 1; \
 	done
 
 vault-bootstrap: ## Interactively login with root token, enable audit logging and KV v2
