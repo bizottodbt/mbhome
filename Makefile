@@ -59,6 +59,7 @@ KUBERNETES_OIDC_CLIENT_ID ?= kubernetes
 DEX_POSTGRES_USER ?= dex
 GRAFANA_ADMIN_USER ?= admin
 VAULT_POD ?= vault-0
+VAULT_PODS ?=
 VAULT_UNSEAL_STEPS ?= 3
 VAULT_KEY_SHARES ?= 5
 VAULT_KEY_THRESHOLD ?= 3
@@ -509,7 +510,14 @@ vault-status: ## Show Vault release, pods, services, route, PVCs, and seal statu
 	$(KUBECTL_ADMIN) -n vault get httproute vault
 	$(KUBECTL_ADMIN) -n vault get httproute vault -o jsonpath='{range .status.parents[*].conditions[*]}{.type}={.status} {.reason} {.message}{"\n"}{end}' || true
 	$(KUBECTL_ADMIN) -n vault get pvc
-	$(KUBECTL_ADMIN) -n vault exec vault-0 -- vault status || true
+	@pods="$(VAULT_PODS)"; \
+	if [ -z "$$pods" ]; then \
+		pods="$$( $(KUBECTL_ADMIN) -n vault get pods -l app.kubernetes.io/instance=vault,component=server -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}' )"; \
+	fi; \
+	for pod in $$pods; do \
+		echo "Vault status for $$pod"; \
+		$(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status || true; \
+	done
 
 vault-init: ## Initialize Vault and print unseal keys/root token once
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
@@ -520,13 +528,29 @@ vault-init: ## Initialize Vault and print unseal keys/root token once
 	if [ "$$confirm" != "initialize vault" ]; then echo "Cancelled"; exit 1; fi
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault operator init -key-shares="$(VAULT_KEY_SHARES)" -key-threshold="$(VAULT_KEY_THRESHOLD)"
 
-vault-unseal: ## Interactively submit Vault unseal keys
+vault-unseal: ## Interactively submit Vault unseal keys to all Vault pods, or VAULT_PODS
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	@for step in $$(seq 1 "$(VAULT_UNSEAL_STEPS)"); do \
-		echo "Vault unseal step $$step/$(VAULT_UNSEAL_STEPS) for $(VAULT_POD)"; \
-		$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault operator unseal; \
+	@pods="$(VAULT_PODS)"; \
+	if [ -z "$$pods" ]; then \
+		pods="$$( $(KUBECTL_ADMIN) -n vault get pods -l app.kubernetes.io/instance=vault,component=server -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}' )"; \
+	fi; \
+	if [ -z "$$pods" ]; then echo "No Vault pods found"; exit 1; fi; \
+	for pod in $$pods; do \
+		status="$$( $(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status 2>/dev/null || true )"; \
+		if printf '%s\n' "$$status" | grep -Eq '^Initialized[[:space:]]+false$$'; then \
+			echo "$$pod is not initialized. Do not run vault operator init again; fix Raft retry_join and recreate the pod."; \
+			exit 1; \
+		fi; \
+		if printf '%s\n' "$$status" | grep -Eq '^Sealed[[:space:]]+false$$'; then \
+			echo "$$pod is already unsealed"; \
+			continue; \
+		fi; \
+		for step in $$(seq 1 "$(VAULT_UNSEAL_STEPS)"); do \
+			echo "Vault unseal step $$step/$(VAULT_UNSEAL_STEPS) for $$pod"; \
+			$(KUBECTL_ADMIN) -n vault exec -it "$$pod" -- vault operator unseal; \
+		done; \
+		$(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status || true; \
 	done
-	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault status || true
 
 vault-bootstrap: ## Interactively login with root token, enable audit logging and KV v2
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)

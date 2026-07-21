@@ -1685,8 +1685,11 @@ make vault-status
 ```
 
 `vault-init` defaults to 5 key shares with a threshold of 3. `vault-unseal`
-prompts for the unseal keys. `vault-bootstrap` prompts for the initial root
-token, enables file audit logging, and enables the initial `kv/` KV v2 mount.
+discovers all Vault server pods, skips pods that are already unsealed, and
+prompts for the unseal keys. To target one pod, run
+`make vault-unseal VAULT_PODS=vault-1`. `vault-bootstrap` prompts for the
+initial root token, enables file audit logging, and enables the initial `kv/` KV
+v2 mount.
 
 Vault uses Dex for AD-backed human login. Create one random client secret for
 the Dex Vault OAuth client, reconcile Dex, and then bootstrap the Vault OIDC auth

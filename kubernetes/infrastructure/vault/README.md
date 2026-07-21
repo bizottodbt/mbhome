@@ -3,19 +3,17 @@
 This directory installs HashiCorp Vault through Flux using the official Helm
 chart.
 
-The first deployment is intentionally conservative:
+The deployment uses integrated Raft with stable StatefulSet peer discovery:
 
 ```text
 mode: HA Raft
-replicas: 1
+replicas: 3
 storage: nfs-cache
 ui: https://vault.apps.mbhome.biz
 ```
 
-This keeps the Vault configuration shaped like the future HA deployment while
-avoiding quorum and unseal complexity on the first pass. After init, unseal, and
-backup procedures are understood, scale Vault to three replicas and join the
-additional Raft peers.
+`vault-1` and `vault-2` join the initialized `vault-0` cluster through Raft
+`retry_join` stanzas. Initialize Vault once only, then unseal every sealed pod.
 
 Vault starts uninitialized and sealed. That is expected.
 
@@ -56,12 +54,19 @@ Unseal after initialization:
 make vault-unseal
 ```
 
-The target prompts for `VAULT_UNSEAL_STEPS`, which defaults to `3`, matching the
-recommended init threshold in this repo. Override it if you initialized Vault
-with a different threshold:
+The target discovers all Vault server pods and skips any pod that is already
+unsealed. It prompts for `VAULT_UNSEAL_STEPS`, which defaults to `3`, matching
+the recommended init threshold in this repo. Override it if you initialized
+Vault with a different threshold:
 
 ```bash
 make vault-unseal VAULT_UNSEAL_STEPS=5
+```
+
+To unseal one pod during a rolling operation:
+
+```bash
+make vault-unseal VAULT_PODS=vault-1
 ```
 
 After logging in with the root token, enable audit logging to the mounted audit
