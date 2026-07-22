@@ -477,6 +477,134 @@
           {{ item.item.server }}:{{ item.item.export }}.
       loop: "{{ _proxmox_cluster_nfs_mount_sources_after.results | default([]) }}"
 
+    - name: Validate Proxmox cluster backup jobs
+      ansible.builtin.assert:
+        that:
+          - item.id is defined
+          - item.id | length > 0
+          - item.schedule is defined
+          - item.schedule | length > 0
+          - item.storage is defined
+          - item.storage | length > 0
+          - item.all | default(false) | bool or item.vmid is defined
+        fail_msg: >-
+          Proxmox backup job definitions require id, schedule, storage, and
+          either all: true or vmid.
+      loop: "{{ proxmox_cluster_backup_jobs | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Read Proxmox cluster backup jobs
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - get
+          - "/cluster/backup/{{ item.id }}"
+          - --output-format
+          - json
+      register: _proxmox_cluster_backup_job_configs
+      changed_when: false
+      failed_when: false
+      loop: "{{ proxmox_cluster_backup_jobs | default([]) }}"
+      when: inventory_hostname == _proxmox_cluster_primary
+
+    - name: Create missing Proxmox cluster backup jobs
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'pvesh',
+              'create',
+              '/cluster/backup',
+              '--id',
+              item.item.id,
+              '--schedule',
+              item.item.schedule,
+              '--storage',
+              item.item.storage,
+              '--mode',
+              item.item.mode | default('snapshot'),
+              '--compress',
+              item.item.compress | default('zstd'),
+              '--enabled',
+              '1' if item.item.enabled | default(true) | bool else '0'
+            ]
+            + (['--all', '1'] if item.item.all | default(false) | bool else [])
+            + (
+              ['--vmid', (item.item.vmid | join(',') if item.item.vmid is sequence and item.item.vmid is not string else item.item.vmid | string)]
+              if item.item.vmid is defined
+              else []
+            )
+            + (
+              ['--exclude', (item.item.exclude | join(',') if item.item.exclude is sequence and item.item.exclude is not string else item.item.exclude | string)]
+              if item.item.exclude is defined
+              else []
+            )
+            + (['--node', item.item.node | string] if item.item.node is defined else [])
+            + (['--prune-backups', item.item.prune_backups | string] if item.item.prune_backups is defined else [])
+            + (['--repeat-missed', '1' if item.item.repeat_missed | bool else '0'] if item.item.repeat_missed is defined else [])
+            + (['--notes-template', item.item.notes_template | string] if item.item.notes_template is defined else [])
+            + (['--comment', item.item.comment | string] if item.item.comment is defined else [])
+            + (['--mailnotification', item.item.mailnotification | string] if item.item.mailnotification is defined else [])
+            + (
+              ['--mailto', (item.item.mailto | join(',') if item.item.mailto is sequence and item.item.mailto is not string else item.item.mailto | string)]
+              if item.item.mailto is defined
+              else []
+            )
+          }}
+      changed_when: true
+      loop: "{{ _proxmox_cluster_backup_job_configs.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - item.rc != 0
+
+    - name: Align existing Proxmox cluster backup jobs
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'pvesh',
+              'set',
+              '/cluster/backup/' ~ item.item.id,
+              '--schedule',
+              item.item.schedule,
+              '--storage',
+              item.item.storage,
+              '--mode',
+              item.item.mode | default('snapshot'),
+              '--compress',
+              item.item.compress | default('zstd'),
+              '--enabled',
+              '1' if item.item.enabled | default(true) | bool else '0'
+            ]
+            + (['--all', '1'] if item.item.all | default(false) | bool else [])
+            + (
+              ['--vmid', (item.item.vmid | join(',') if item.item.vmid is sequence and item.item.vmid is not string else item.item.vmid | string)]
+              if item.item.vmid is defined
+              else []
+            )
+            + (
+              ['--exclude', (item.item.exclude | join(',') if item.item.exclude is sequence and item.item.exclude is not string else item.item.exclude | string)]
+              if item.item.exclude is defined
+              else []
+            )
+            + (['--node', item.item.node | string] if item.item.node is defined else [])
+            + (['--prune-backups', item.item.prune_backups | string] if item.item.prune_backups is defined else [])
+            + (['--repeat-missed', '1' if item.item.repeat_missed | bool else '0'] if item.item.repeat_missed is defined else [])
+            + (['--notes-template', item.item.notes_template | string] if item.item.notes_template is defined else [])
+            + (['--comment', item.item.comment | string] if item.item.comment is defined else [])
+            + (['--mailnotification', item.item.mailnotification | string] if item.item.mailnotification is defined else [])
+            + (
+              ['--mailto', (item.item.mailto | join(',') if item.item.mailto is sequence and item.item.mailto is not string else item.item.mailto | string)]
+              if item.item.mailto is defined
+              else []
+            )
+          }}
+      changed_when: false
+      loop: "{{ _proxmox_cluster_backup_job_configs.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - item.rc == 0
+
     - name: Ensure Proxmox API users exist on the cluster
       ansible.builtin.command:
         argv:

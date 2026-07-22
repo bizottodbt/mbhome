@@ -678,6 +678,7 @@ The playbook:
 - Joins the other nodes one at a time through `pvecm add --use_ssh 1`
 - Configures cluster live migration settings from `proxmox_cluster_migration`
 - Registers any `proxmox_cluster_nfs_storages` as cluster-wide Proxmox storage
+- Configures any `proxmox_cluster_backup_jobs` as Datacenter backup jobs
 - Leaves already-clustered nodes alone on later runs
 
 Verify from any Proxmox node:
@@ -731,6 +732,32 @@ Verify from either node:
 ```bash
 pvesm status
 pvesm config proxmox-vms
+```
+
+Cluster backup jobs are also declared in the same inventory. Proxmox does not
+have a VM-level default backup policy, but a Datacenter backup job with
+`all: true` covers all current VMs/CTs and includes new guests automatically
+unless they are explicitly excluded:
+
+```yaml
+proxmox_cluster_backup_jobs:
+  - id: nightly-all-guests
+    schedule: "03:00"
+    storage: proxmox-backup
+    mode: snapshot
+    compress: zstd
+    all: true
+    enabled: true
+    repeat_missed: true
+    prune_backups: keep-daily=7,keep-weekly=4,keep-monthly=3
+    notes_template: !unsafe "{{guestname}} - {{node}} - {{vmid}}"
+```
+
+After rerunning `make proxmox-cluster`, verify the job from a Proxmox node:
+
+```bash
+pvesh get /cluster/backup
+pvesh get /cluster/backup/nightly-all-guests
 ```
 
 ### Configure Proxmox API automation users
@@ -841,6 +868,49 @@ Destroy it when done:
 ```bash
 make proxmox-smoke-vm-destroy
 ```
+
+### Create a Home Assistant OS VM
+
+Home Assistant OS is managed as its own Proxmox Terraform stack because it boots
+from the official HAOS KVM/Proxmox qcow2 image rather than from an installer ISO
+or cloud-init image.
+
+The stack uses the same shared Proxmox API vars as the other Terraform stacks.
+Review these committed topology values before applying:
+
+```text
+infrastructure/terraform/proxmox-home-assistant-vm/terraform.tfvars
+```
+
+Important values:
+
+- `vm_name`: defaults to `mbhome-ha-01`
+- `vm_id`: defaults to `9501`
+- `vm_mac_address`: use this for a router DHCP reservation
+- `vm_datastore_id`: defaults to `proxmox-vms`
+- `haos_image_url`: pinned Home Assistant OS qcow2.xz image
+
+Create the VM:
+
+```bash
+make proxmox-home-assistant-vm-init
+make proxmox-home-assistant-vm-plan
+make proxmox-home-assistant-vm-apply
+```
+
+The VM uses OVMF/UEFI with secure-boot keys disabled, q35, VirtIO networking,
+and a visible VGA console for the HAOS boot screen. After boot, reserve the
+configured MAC address in the router or DHCP server, then open:
+
+```text
+http://<home-assistant-ip>:8123
+```
+
+If migrating from a Home Assistant Container setup, do not point HAOS directly
+at the old NFS-mounted `/config` directory. HAOS stores its data inside the VM
+disk and should be migrated with a Home Assistant backup restore. Keep the old
+container stopped during the first HAOS restore to avoid two instances using
+the same integrations.
 
 ## Windows Server and AD DS
 

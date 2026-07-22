@@ -44,6 +44,7 @@ infrastructure/kolla-ansible/config/ironic/ironic-agent*.initramfs
 !infrastructure/terraform/proxmox-smoke-vm/terraform.tfvars
 !infrastructure/terraform/proxmox-ad-vms/terraform.tfvars
 !infrastructure/terraform/proxmox-talos-vm/terraform.tfvars
+!infrastructure/terraform/proxmox-home-assistant-vm/terraform.tfvars
 
 # Packer local overrides
 *.pkrvars.hcl

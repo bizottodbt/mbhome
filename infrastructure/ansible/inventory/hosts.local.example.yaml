@@ -86,6 +86,17 @@ all:
             export: /mnt/user/proxmox-backup
             content:
               - backup
+        proxmox_cluster_backup_jobs:
+          - id: nightly-all-guests
+            schedule: "03:00"
+            storage: proxmox-backup
+            mode: snapshot
+            compress: zstd
+            all: true
+            enabled: true
+            repeat_missed: true
+            prune_backups: keep-daily=7,keep-weekly=4,keep-monthly=3
+            notes_template: !unsafe "{{guestname}} - {{node}} - {{vmid}}"
         proxmox_10gbe_mtu: 1500
         proxmox_storage_content:
           - storage: local

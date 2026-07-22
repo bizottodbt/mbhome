@@ -26,6 +26,8 @@ PROXMOX_TALOS_TF_DIR := infrastructure/terraform/proxmox-talos-vm
 PROXMOX_TALOS_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_TALOS_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_TALOS_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
 PROXMOX_AD_TF_DIR := infrastructure/terraform/proxmox-ad-vms
 PROXMOX_AD_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_AD_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_AD_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
+PROXMOX_HOME_ASSISTANT_TF_DIR := infrastructure/terraform/proxmox-home-assistant-vm
+PROXMOX_HOME_ASSISTANT_TF_VARS := $(PROXMOX_TF_SHARED_VARS) $(if $(wildcard $(PROXMOX_HOME_ASSISTANT_TF_DIR)/terraform.tfvars),-var-file=terraform.tfvars,) $(if $(wildcard $(PROXMOX_HOME_ASSISTANT_TF_DIR)/terraform.local.tfvars),-var-file=terraform.local.tfvars,)
 PROXMOX_WINDOWS_PACKER_DIR := infrastructure/packer/proxmox-windows-server
 PROXMOX_WINDOWS_PACKER_SHARED_VARS := $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.pkrvars.hcl),-var-file=../../terraform/proxmox.shared.pkrvars.hcl,) $(if $(wildcard $(PROXMOX_TF_SHARED_DIR)/proxmox.shared.local.pkrvars.hcl),-var-file=../../terraform/proxmox.shared.local.pkrvars.hcl,)
 PROXMOX_WINDOWS_PACKER_VARS := $(PROXMOX_WINDOWS_PACKER_SHARED_VARS) $(if $(wildcard $(PROXMOX_WINDOWS_PACKER_DIR)/packer.pkrvars.hcl),-var-file=packer.pkrvars.hcl,) $(if $(wildcard $(PROXMOX_WINDOWS_PACKER_DIR)/packer.local.pkrvars.hcl),-var-file=packer.local.pkrvars.hcl,)
@@ -95,7 +97,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -243,6 +245,18 @@ proxmox-talos-vm-apply: ## Create/update the first Talos Kubernetes VM
 
 proxmox-talos-vm-destroy: ## Destroy the first Talos Kubernetes VM
 	cd $(PROXMOX_TALOS_TF_DIR) && terraform destroy $(PROXMOX_TALOS_TF_VARS)
+
+proxmox-home-assistant-vm-init: ## Initialize Terraform for the Home Assistant OS VM
+	cd $(PROXMOX_HOME_ASSISTANT_TF_DIR) && terraform init
+
+proxmox-home-assistant-vm-plan: ## Plan the Home Assistant OS VM
+	cd $(PROXMOX_HOME_ASSISTANT_TF_DIR) && terraform plan $(PROXMOX_HOME_ASSISTANT_TF_VARS)
+
+proxmox-home-assistant-vm-apply: ## Create/update the Home Assistant OS VM
+	cd $(PROXMOX_HOME_ASSISTANT_TF_DIR) && terraform apply $(PROXMOX_HOME_ASSISTANT_TF_VARS)
+
+proxmox-home-assistant-vm-destroy: ## Destroy the Home Assistant OS VM
+	cd $(PROXMOX_HOME_ASSISTANT_TF_DIR) && terraform destroy $(PROXMOX_HOME_ASSISTANT_TF_VARS)
 
 talos-inspect: ## Inspect booted Talos ISO disks and network links before applying config
 	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
