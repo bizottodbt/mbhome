@@ -116,6 +116,16 @@ docker compose up -d haproxy
 docker compose exec haproxy haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
 ```
 
+The HAProxy service mounts the PEM file directly:
+
+```text
+./certs/mbhome.biz.pem -> /usr/local/etc/haproxy/certs/mbhome.biz.pem
+```
+
+Run `docker compose` from this directory, for example
+`/mnt/user/appdata/haproxy-k8s-api`, so the relative `./certs` path points to
+the same place where certbot writes the PEM.
+
 The certbot container wakes up twice a day by default, runs `certbot renew`,
 and rewrites `certs/mbhome.biz.pem` when the certificate changes.
 
