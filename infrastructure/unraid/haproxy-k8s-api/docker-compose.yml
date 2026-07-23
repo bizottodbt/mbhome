@@ -16,3 +16,37 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  certbot:
+    image: certbot/dns-cloudflare:latest
+    container_name: haproxy-certbot
+    restart: unless-stopped
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:?Set CERTBOT_EMAIL in .env}
+      CERTBOT_CERT_NAME: ${CERTBOT_CERT_NAME:-mbhome.biz}
+      CERTBOT_DOMAINS: ${CERTBOT_DOMAINS:-mbhome.biz,*.mbhome.biz}
+      CLOUDFLARE_PROPAGATION_SECONDS: ${CLOUDFLARE_PROPAGATION_SECONDS:-60}
+      RENEW_INTERVAL_SECONDS: ${RENEW_INTERVAL_SECONDS:-43200}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certs:/certs
+      - ./cloudflare.ini:/run/secrets/cloudflare.ini:ro
+      - ./scripts/certbot-renew.sh:/usr/local/bin/certbot-renew:ro
+      - ./scripts/install-haproxy-pem.sh:/usr/local/bin/install-haproxy-pem:ro
+    command: ["/bin/sh", "/usr/local/bin/certbot-renew"]
+
+  haproxy-cert-reloader:
+    image: docker:27-cli
+    container_name: haproxy-cert-reloader
+    profiles:
+      - auto-reload
+    restart: unless-stopped
+    environment:
+      HAPROXY_CONTAINER: haproxy
+      WATCH_FILE: /certs/mbhome.biz.pem
+      WATCH_INTERVAL_SECONDS: ${WATCH_INTERVAL_SECONDS:-300}
+    volumes:
+      - ./certs:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/reload-haproxy-on-cert-change.sh:/usr/local/bin/reload-haproxy-on-cert-change:ro
+    command: ["/bin/sh", "/usr/local/bin/reload-haproxy-on-cert-change"]

@@ -29,6 +29,9 @@ https://mbhome-proxmox-02-bmc.mbhome.biz -> Unraid HAProxy -> BMC 10.20.30.22:44
 - `haproxy.cfg`: TCP load balancer config for Kubernetes/Talos APIs and HTTPS
   reverse proxy config for MinIO
 - `certs/`: local-only certificate mount point; do not commit private keys
+- `letsencrypt/`: local-only certbot state; do not commit
+- `cloudflare.ini`: local-only Cloudflare DNS API token file; do not commit
+- `scripts/`: certbot renewal and optional HAProxy restart helpers
 
 ## Deploy on Unraid
 
@@ -47,7 +50,7 @@ docker compose up -d
 Validate the HAProxy config:
 
 ```bash
-docker compose exec haproxy-k8s-api haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+docker compose exec haproxy haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
 ```
 
 Show logs:
@@ -58,24 +61,85 @@ docker compose logs -f
 
 ## Certificates
 
-For non-Kubernetes internal endpoints, place a wildcard certificate for
-`*.mbhome.biz` on Unraid in HAProxy PEM format:
+For non-Kubernetes internal endpoints, the compose bundle uses certbot with
+Cloudflare DNS-01 to issue a public Let's Encrypt certificate for:
+
+```text
+mbhome.biz
+*.mbhome.biz
+```
+
+Create a Cloudflare API token scoped to the `mbhome.biz` zone with:
+
+```text
+Zone / Zone / Read
+Zone / DNS / Edit
+```
+
+Create the local files on Unraid:
+
+```bash
+cp .env.example .env
+cp cloudflare.ini.example cloudflare.ini
+```
+
+Edit `.env` and set `CERTBOT_EMAIL`. Edit `cloudflare.ini` and set the
+Cloudflare token:
+
+```text
+dns_cloudflare_api_token = replace-with-real-token
+```
+
+Lock down the token file:
+
+```bash
+chmod 600 cloudflare.ini
+```
+
+Start certbot first so it can create the HAProxy PEM:
+
+```bash
+docker compose up -d certbot
+docker compose logs -f certbot
+```
+
+Certbot writes the PEM expected by HAProxy:
 
 ```text
 certs/mbhome.biz.pem
 ```
 
-The PEM file must include the full certificate chain followed by the private
-key:
+Then start HAProxy:
 
 ```bash
-cat fullchain.pem privkey.pem > certs/mbhome.biz.pem
-chmod 0600 certs/mbhome.biz.pem
+docker compose up -d haproxy
+docker compose exec haproxy haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
 ```
 
-This private key is intentionally ignored by Git. Kubernetes-hosted apps should
-continue using the in-cluster `*.apps.mbhome.biz` certificate managed by
-cert-manager.
+The certbot container wakes up twice a day by default, runs `certbot renew`,
+and rewrites `certs/mbhome.biz.pem` when the certificate changes.
+
+HAProxy does not automatically reload certificates from disk. The conservative
+default is to restart HAProxy after renewal when needed:
+
+```bash
+docker compose restart haproxy
+```
+
+If you want automatic restart after renewal, enable the optional reloader
+profile:
+
+```bash
+docker compose --profile auto-reload up -d
+```
+
+That helper mounts `/var/run/docker.sock` and restarts the HAProxy container
+when `certs/mbhome.biz.pem` changes. Docker socket access is powerful; leave
+the profile disabled if you prefer manual restarts.
+
+Private keys, certbot state, `.env`, and the Cloudflare token are intentionally
+ignored by Git. Kubernetes-hosted apps should continue using the in-cluster
+`*.apps.mbhome.biz` certificate managed by cert-manager.
 
 ## DNS
 
@@ -250,7 +314,7 @@ Kubernetes API and Talos machine API `server` lines in `haproxy.cfg`, then
 reload:
 
 ```bash
-docker compose restart haproxy-k8s-api
+docker compose restart haproxy
 ```
 
 Keep at least one break-glass Talos/Kubernetes admin config outside the
