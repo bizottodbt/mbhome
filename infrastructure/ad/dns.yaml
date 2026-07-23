@@ -24,7 +24,7 @@ zones:
         ttl: 300
         state: present
 
-      - name: s3-api
+      - name: s3-ui
         type: A
         value: 10.20.30.50
         ttl: 300
