@@ -33,7 +33,8 @@ services:
       - ./cloudflare.ini:/run/secrets/cloudflare.ini:ro
       - ./scripts/certbot-renew.sh:/usr/local/bin/certbot-renew:ro
       - ./scripts/install-haproxy-pem.sh:/usr/local/bin/install-haproxy-pem:ro
-    command: ["/bin/sh", "/usr/local/bin/certbot-renew"]
+    entrypoint: ["/bin/sh"]
+    command: ["/usr/local/bin/certbot-renew"]
 
   haproxy-cert-reloader:
     image: docker:27-cli
