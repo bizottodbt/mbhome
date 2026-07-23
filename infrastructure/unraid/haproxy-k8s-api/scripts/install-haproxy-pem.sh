@@ -13,6 +13,6 @@ if [ ! -f "$live_dir/fullchain.pem" ] || [ ! -f "$live_dir/privkey.pem" ]; then
 fi
 
 cat "$live_dir/fullchain.pem" "$live_dir/privkey.pem" > "$tmp"
-chmod 0600 "$tmp"
+chmod 0644 "$tmp"
 mv "$tmp" "$target"
 echo "Wrote HAProxy PEM: $target"

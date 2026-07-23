@@ -109,6 +109,10 @@ Certbot writes the PEM expected by HAProxy:
 certs/mbhome.biz.pem
 ```
 
+The PEM is written as mode `0644` so the HAProxy process inside the container
+can read it even when the image runs as a non-root user. Keep the whole compose
+directory on trusted Unraid appdata storage and never commit `certs/`.
+
 Then start HAProxy:
 
 ```bash
