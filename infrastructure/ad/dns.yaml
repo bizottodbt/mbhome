@@ -18,19 +18,25 @@ zones:
         ttl: 300
         state: present
 
-      - name: minio
+      - name: s3
         type: A
         value: 10.20.30.50
         ttl: 300
         state: present
 
-      - name: minio-console
+      - name: s3-api
         type: A
         value: 10.20.30.50
         ttl: 300
         state: present
 
       - name: proxmox
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+      
+      - name: nas
         type: A
         value: 10.20.30.50
         ttl: 300
@@ -53,26 +59,8 @@ zones:
         value: 10.20.30.50
         ttl: 300
         state: present
-
-      - name: talos-cp-01
-        type: A
-        value: 10.20.30.71
-        ttl: 300
-        state: present
-
-      - name: talos-cp-02
-        type: A
-        value: 10.20.30.72
-        ttl: 300
-        state: present
-
-      - name: talos-cp-03
-        type: A
-        value: 10.20.30.73
-        ttl: 300
-        state: present
-
-      - name: unraid
+      
+      - name: mbhome-proxmox-03-bmc
         type: A
         value: 10.20.30.50
         ttl: 300
