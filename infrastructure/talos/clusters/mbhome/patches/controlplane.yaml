@@ -1,4 +1,7 @@
 machine:
+  certSANs:
+    - talos-api.mbhome.biz
+    - 10.20.30.50
   install:
     disk: /dev/sda
     wipe: true
@@ -22,6 +25,12 @@ cluster:
   proxy:
     disabled: true
   apiServer:
+    certSANs:
+      - k8s-api.mbhome.biz
+      - 10.20.30.50
+      - 10.20.30.71
+      - 10.20.30.72
+      - 10.20.30.73
     extraArgs:
       oidc-issuer-url: https://dex.apps.mbhome.biz
       oidc-client-id: kubernetes

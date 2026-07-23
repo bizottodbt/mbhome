@@ -1196,6 +1196,42 @@ zones:
         value: 10.20.30.50
         ttl: 300
         state: present
+
+      - name: talos-api
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: minio
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: minio-console
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: proxmox
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: unraid
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: mbhome-proxmox-01-bmc
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
 ```
 
 Preview DNS changes:
@@ -1235,11 +1271,20 @@ For the first stable Kubernetes API endpoint, use the HAProxy-on-Unraid bundle:
 infrastructure/unraid/haproxy-k8s-api/
 ```
 
-Deploy it on Unraid, point `k8s-api.mbhome.biz` at the Unraid IP exposing
-HAProxy, set `TALOS_K8S_ENDPOINT := k8s-api.mbhome.biz` in `local.mk`, then
+Deploy it on Unraid, point `k8s-api.mbhome.biz` and `talos-api.mbhome.biz` at
+the Unraid IP exposing HAProxy, set `TALOS_K8S_ENDPOINT := k8s-api.mbhome.biz`
+and optionally `TALOS_ENDPOINT := talos-api.mbhome.biz` in `local.mk`, then
 regenerate/reapply the Talos config before adding more control-plane nodes.
-Keep `TALOS_ENDPOINT` pointed at a real control-plane node IP unless HAProxy is
-also proxying the Talos machine API on TCP/50000.
+The same HAProxy bundle can terminate HTTPS for external-to-cluster support
+services such as `minio.mbhome.biz` and `minio-console.mbhome.biz` using a
+local-only `*.mbhome.biz` PEM certificate. It also routes internal management
+UIs such as `unraid.mbhome.biz`, clustered `proxmox.mbhome.biz`, and individual
+BMC hostnames.
+
+The Kubernetes API and Talos machine API are different: HAProxy passes their
+TLS through. Add `k8s-api.mbhome.biz` to `cluster.apiServer.certSANs` and
+`talos-api.mbhome.biz` to `machine.certSANs` in the Talos control-plane patch
+so the APIs present certificates matching their load-balanced DNS names.
 
 ### Create the first Talos VM
 

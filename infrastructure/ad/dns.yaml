@@ -12,9 +12,63 @@ zones:
         ttl: 300
         state: present
 
+      - name: talos-api
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: minio
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: minio-console
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: proxmox
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: mbhome-nas-01-bmc
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: mbhome-proxmox-01-bmc
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: mbhome-proxmox-02-bmc
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
       - name: talos-cp-01
         type: A
-        value: 10.20.30.70
+        value: 10.20.30.71
+        ttl: 300
+        state: present
+
+      - name: talos-cp-02
+        type: A
+        value: 10.20.30.72
+        ttl: 300
+        state: present
+
+      - name: talos-cp-03
+        type: A
+        value: 10.20.30.73
         ttl: 300
         state: present
 

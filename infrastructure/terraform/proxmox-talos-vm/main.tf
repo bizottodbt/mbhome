@@ -112,7 +112,7 @@ resource "proxmox_virtual_environment_vm" "talos" {
   }
 
   cdrom {
-    file_id   = proxmox_download_file.talos_iso.id
+    file_id   = coalesce(try(each.value.boot_from_iso, null), var.vm_boot_from_iso) ? proxmox_download_file.talos_iso.id : "none"
     interface = var.iso_interface
   }
 
