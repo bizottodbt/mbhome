@@ -6,3 +6,5 @@ resources:
   - helmrepository.yaml
   - helmrelease.yaml
   - httproutes.yaml
+  - pvc-dashboard.yaml
+  - pvc-rules.yaml

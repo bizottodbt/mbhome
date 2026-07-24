@@ -1,0 +1,48 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pvc-request-usage
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: pvc-request-usage
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: pvc.request-usage.rules
+      rules:
+        - record: namespace_persistentvolumeclaim:used_bytes
+          expr: |
+            sum by (namespace, persistentvolumeclaim) (
+              kubelet_volume_stats_used_bytes
+            )
+
+        - record: namespace_persistentvolumeclaim:request_bytes
+          expr: |
+            max by (namespace, persistentvolumeclaim) (
+              kube_persistentvolumeclaim_resource_requests_storage_bytes
+            )
+
+        - record: namespace_persistentvolumeclaim:used_request_ratio
+          expr: |
+            namespace_persistentvolumeclaim:used_bytes
+            /
+            clamp_min(namespace_persistentvolumeclaim:request_bytes, 1)
+
+        - alert: PersistentVolumeClaimNearRequestedSize
+          expr: namespace_persistentvolumeclaim:used_request_ratio > 0.85
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is near its requested size
+            description: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is using more than 85% of its requested size.
+
+        - alert: PersistentVolumeClaimOverRequestedSize
+          expr: namespace_persistentvolumeclaim:used_request_ratio > 1
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is over its requested size
+            description: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is using more bytes than it requested. NFS subdirectory provisioning does not enforce this as a hard quota.

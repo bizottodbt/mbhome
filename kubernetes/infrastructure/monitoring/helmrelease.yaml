@@ -47,6 +47,12 @@ spec:
         existingSecret: grafana-admin
         userKey: admin-user
         passwordKey: admin-password
+      sidecar:
+        dashboards:
+          enabled: true
+          label: grafana_dashboard
+          labelValue: "1"
+          searchNamespace: ALL
       grafana.ini:
         server:
           root_url: https://grafana.apps.mbhome.biz
