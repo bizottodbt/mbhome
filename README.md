@@ -1815,8 +1815,9 @@ make vault-status
 discovers all Vault server pods, skips pods that are already unsealed, and
 prompts for the unseal keys. To target one pod, run
 `make vault-unseal VAULT_PODS=vault-1`. `vault-bootstrap` prompts for the
-initial root token, enables file audit logging, and enables the initial `kv/` KV
-v2 mount.
+initial root token, enables file audit logging, and enables the initial
+`mbhome/` KV v2 mount. Override the mount path with `VAULT_KV_MOUNT=...` if
+you intentionally want a different Vault namespace.
 
 Vault uses Dex for AD-backed human login. Create one random client secret for
 the Dex Vault OAuth client, reconcile Dex, and then bootstrap the Vault OIDC auth
@@ -1858,9 +1859,9 @@ make vault-secrets-operator-status
 ```
 
 The initial operator policy is read-only and scoped to future secret paths under
-`kv/platform/*` and `kv/apps/*`. Existing Kubernetes Secrets stay on the current
-Make targets until their matching Vault KV entries and `VaultStaticSecret`
-resources are added.
+`mbhome/platform/*` and `mbhome/apps/*` by default. Existing Kubernetes Secrets
+stay on the current Make targets until their matching Vault KV entries and
+`VaultStaticSecret` resources are added.
 
 Create the Grafana admin secret before reconciling the monitoring stack:
 

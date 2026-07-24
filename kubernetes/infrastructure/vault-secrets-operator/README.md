@@ -29,9 +29,11 @@ creates the `vault-secrets-operator` policy, and binds it to the
 The initial policy is read-only and scoped to future platform/application paths:
 
 ```text
-kv/platform/*
-kv/apps/*
+mbhome/platform/*
+mbhome/apps/*
 ```
+
+The mount path comes from `VAULT_KV_MOUNT`, which defaults to `mbhome`.
 
 Status:
 

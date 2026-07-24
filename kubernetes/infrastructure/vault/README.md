@@ -81,7 +81,15 @@ enables the initial KV v2 engine for mbhome platform secrets. The defaults are:
 
 ```text
 audit path: /vault/audit/vault-audit.log
-KV v2 mount: kv/
+KV v2 mount: mbhome/
+```
+
+Override the mount path when needed:
+
+```bash
+make vault-bootstrap VAULT_KV_MOUNT=example
+make vault-oidc-bootstrap VAULT_KV_MOUNT=example
+make vault-secrets-operator-bootstrap VAULT_KV_MOUNT=example
 ```
 
 The root token is used interactively through the Vault CLI and the CLI token file
