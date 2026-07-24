@@ -1203,13 +1203,13 @@ zones:
         ttl: 300
         state: present
 
-      - name: minio
+      - name: s3
         type: A
         value: 10.20.30.50
         ttl: 300
         state: present
 
-      - name: minio-console
+      - name: s3-ui
         type: A
         value: 10.20.30.50
         ttl: 300
@@ -1221,9 +1221,15 @@ zones:
         ttl: 300
         state: present
 
-      - name: unraid
+      - name: nas
         type: A
         value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: storage
+        type: A
+        value: 10.20.90.50
         ttl: 300
         state: present
 
@@ -1276,9 +1282,9 @@ the Unraid IP exposing HAProxy, set `TALOS_K8S_ENDPOINT := k8s-api.mbhome.biz`
 and optionally `TALOS_ENDPOINT := talos-api.mbhome.biz` in `local.mk`, then
 regenerate/reapply the Talos config before adding more control-plane nodes.
 The same HAProxy bundle can terminate HTTPS for external-to-cluster support
-services such as `minio.mbhome.biz` and `minio-console.mbhome.biz` using a
+services such as `s3.mbhome.biz` and `s3-ui.mbhome.biz` using a
 local-only `*.mbhome.biz` PEM certificate. It also routes internal management
-UIs such as `unraid.mbhome.biz`, clustered `proxmox.mbhome.biz`, and individual
+UIs such as `nas.mbhome.biz`, clustered `proxmox.mbhome.biz`, and individual
 BMC hostnames.
 
 The Kubernetes API and Talos machine API are different: HAProxy passes their
@@ -1687,18 +1693,24 @@ kubernetes/infrastructure/nfs-csi/
 ```
 
 Edit the NFS CSI Flux manifests there before Flux reconciles them if the
-Unraid IP or exports change:
+Unraid storage endpoint or exports change:
 
-- `nfs-cache` `server` should be the Unraid 10 GbE IP, for example `10.20.90.10`
+- `nfs-cache` `server` should be the Unraid 10 GbE DNS name, for example `storage.mbhome.biz`
 - `nfs-cache` `share` should be a direct cache export, for example `/mnt/cache/k8s-fast`
-- `nfs-user` `server` should be the same Unraid 10 GbE IP
+- `nfs-user` `server` should be the same Unraid 10 GbE DNS name
 - `nfs-user` `share` should be a parity-backed export, for example `/mnt/user/k8s`
 
-Create both paths on Unraid and export them over NFS to the Talos node subnet
+Create an internal DNS record such as `storage.mbhome.biz -> 10.20.90.50`, then
+create both paths on Unraid and export them over NFS to the Talos node subnet
 before Flux reconciles NFS CSI. For the fast class, export the cache path
 directly, for example `/mnt/cache/k8s-fast`, to bypass Unraid user shares and
 parity/mover behavior. The CSI driver creates PVC subdirectories inside those
 exports, but it does not create or export the top-level shares.
+
+Do not put NFS behind HAProxy. Use DNS for address flexibility and keep a direct
+IP noted as a break-glass fallback. Existing PVs keep the StorageClass
+parameters they were created with, so changing the StorageClass mainly affects
+new PVCs.
 
 Cilium remains a bootstrap dependency for now because Flux needs a working CNI
 before its controllers can run. Cilium values are still applied by

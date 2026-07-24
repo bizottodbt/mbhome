@@ -13,9 +13,9 @@ k8s-api.mbhome.biz:6443 -> Unraid HAProxy -> mbhome-talos-cp-01:6443
 talos-api.mbhome.biz:50000 -> Unraid HAProxy -> mbhome-talos-cp-01:50000
                                          \-> mbhome-talos-cp-02:50000
                                          \-> mbhome-talos-cp-03:50000
-https://minio.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9000
-https://minio-console.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9001
-https://unraid.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:80
+https://s3.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9768
+https://s3-ui.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9769
+https://nas.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:80
 https://proxmox.mbhome.biz -> Unraid HAProxy -> mbhome-proxmox-01:8006
                                           \-> mbhome-proxmox-02:8006
 https://mbhome-nas-01-bmc.mbhome.biz -> Unraid HAProxy -> BMC 10.20.30.20:443
@@ -163,9 +163,9 @@ service:
 ```text
 k8s-api.mbhome.biz -> <unraid-ip>
 talos-api.mbhome.biz -> <unraid-ip>
-minio.mbhome.biz -> <unraid-ip>
-minio-console.mbhome.biz -> <unraid-ip>
-unraid.mbhome.biz -> <unraid-ip>
+s3.mbhome.biz -> <unraid-ip>
+s3-ui.mbhome.biz -> <unraid-ip>
+nas.mbhome.biz -> <unraid-ip>
 proxmox.mbhome.biz -> <unraid-ip>
 mbhome-nas-01-bmc.mbhome.biz -> <unraid-ip>
 mbhome-proxmox-01-bmc.mbhome.biz -> <unraid-ip>
@@ -177,31 +177,20 @@ For example, if clients should reach HAProxy over the management VLAN:
 ```text
 k8s-api.mbhome.biz -> 10.20.30.50
 talos-api.mbhome.biz -> 10.20.30.50
-minio.mbhome.biz -> 10.20.30.50
-minio-console.mbhome.biz -> 10.20.30.50
-unraid.mbhome.biz -> 10.20.30.50
+s3.mbhome.biz -> 10.20.30.50
+s3-ui.mbhome.biz -> 10.20.30.50
+nas.mbhome.biz -> 10.20.30.50
 proxmox.mbhome.biz -> 10.20.30.50
 mbhome-nas-01-bmc.mbhome.biz -> 10.20.30.50
 mbhome-proxmox-01-bmc.mbhome.biz -> 10.20.30.50
 mbhome-proxmox-02-bmc.mbhome.biz -> 10.20.30.50
 ```
 
-If clients should reach it over the 10 GbE/storage VLAN:
+Do not use the storage VLAN address as the normal API/UI endpoint. Keep
+`10.20.90.50` for storage traffic such as NFS via `storage.mbhome.biz`.
 
-```text
-k8s-api.mbhome.biz -> 10.20.90.10
-talos-api.mbhome.biz -> 10.20.90.10
-minio.mbhome.biz -> 10.20.90.10
-minio-console.mbhome.biz -> 10.20.90.10
-unraid.mbhome.biz -> 10.20.90.10
-proxmox.mbhome.biz -> 10.20.90.10
-mbhome-nas-01-bmc.mbhome.biz -> 10.20.90.10
-mbhome-proxmox-01-bmc.mbhome.biz -> 10.20.90.10
-mbhome-proxmox-02-bmc.mbhome.biz -> 10.20.90.10
-```
-
-Pick the address that your Talos nodes, Kubernetes pods, and admin workstation
-can all reach reliably.
+Use `10.20.30.50` for HAProxy-hosted management/API names unless you
+intentionally decide to expose HAProxy on another reachable admin network.
 
 ## Talos
 
@@ -218,8 +207,9 @@ This bundle also exposes the Talos machine API on TCP/50000:
 TALOS_ENDPOINT := talos-api.mbhome.biz
 ```
 
-For break-glass operations, keep a known-good control-plane IP available so you
-can bypass HAProxy if Unraid is unavailable.
+For break-glass operations, keep known-good direct IPs available so you can
+bypass HAProxy if Unraid is unavailable. DNS should normally point clients at
+HAProxy, while direct IPs remain a manual fallback for admin access.
 
 Because the Kubernetes API and Talos machine API are TCP-passed through instead
 of terminated by HAProxy, their certificates must be issued by Talos with the
@@ -253,22 +243,22 @@ make talos-apply
 The HTTPS frontend routes MinIO by hostname:
 
 ```text
-https://minio.mbhome.biz         -> 10.20.30.50:9000
-https://minio-console.mbhome.biz -> 10.20.30.50:9001
+https://s3.mbhome.biz    -> 10.20.30.50:9768
+https://s3-ui.mbhome.biz -> 10.20.30.50:9769
 ```
 
 Configure the MinIO container on Unraid with matching external URLs when
 possible:
 
 ```text
-MINIO_SERVER_URL=https://minio.mbhome.biz
-MINIO_BROWSER_REDIRECT_URL=https://minio-console.mbhome.biz
+MINIO_SERVER_URL=https://s3.mbhome.biz
+MINIO_BROWSER_REDIRECT_URL=https://s3-ui.mbhome.biz
 ```
 
 Backup clients such as Velero should use the S3 API endpoint:
 
 ```text
-https://minio.mbhome.biz
+https://s3.mbhome.biz
 ```
 
 ## Management UIs
@@ -276,7 +266,7 @@ https://minio.mbhome.biz
 The HTTPS frontend also routes management UIs by hostname:
 
 ```text
-https://unraid.mbhome.biz
+https://nas.mbhome.biz
 https://proxmox.mbhome.biz
 https://mbhome-nas-01-bmc.mbhome.biz
 https://mbhome-proxmox-01-bmc.mbhome.biz
@@ -302,9 +292,9 @@ From your workstation:
 ```bash
 nc -vz k8s-api.mbhome.biz 6443
 nc -vz talos-api.mbhome.biz 50000
-curl -Ik https://minio.mbhome.biz/minio/health/live
-curl -Ik https://minio-console.mbhome.biz
-curl -Ik https://unraid.mbhome.biz
+curl -Ik https://s3.mbhome.biz/minio/health/live
+curl -Ik https://s3-ui.mbhome.biz
+curl -Ik https://nas.mbhome.biz
 curl -Ik https://proxmox.mbhome.biz
 curl -Ik https://mbhome-proxmox-01-bmc.mbhome.biz
 ```
