@@ -42,6 +42,12 @@ zones:
         ttl: 300
         state: present
 
+      - name: storage
+        type: A
+        value: 10.20.90.50
+        ttl: 300
+        state: present
+
       - name: mbhome-nas-01-bmc
         type: A
         value: 10.20.30.50
