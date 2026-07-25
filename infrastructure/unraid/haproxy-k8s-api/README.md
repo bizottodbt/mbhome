@@ -299,6 +299,16 @@ curl -Ik https://proxmox.mbhome.biz
 curl -Ik https://mbhome-proxmox-01-bmc.mbhome.biz
 ```
 
+If `https://s3.mbhome.biz/minio/health/live` returns `503` but
+`http://10.20.30.50:9768/minio/health/live` returns `200`, check HAProxy stats:
+
+```bash
+curl -fsS http://10.20.30.50:8404/;csv | grep minio_api
+```
+
+`L7STS,400` means MinIO rejected HAProxy's health probe. The configured probe
+uses HTTP/1.1 with `Host: s3.mbhome.biz`, which MinIO accepts.
+
 After `talos-kubeconfig`, verify Kubernetes through the HAProxy endpoint:
 
 ```bash
