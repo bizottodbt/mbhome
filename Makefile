@@ -64,6 +64,7 @@ VELERO_NAMESPACE ?= velero
 VELERO_S3_CREDENTIALS_SECRET ?= velero-s3-credentials
 VELERO_BACKUP_NAME ?= manual-$(shell date -u +%Y%m%d%H%M%S)
 VELERO_BACKUP_TTL ?= 720h
+VELERO_BACKUP_WAIT_SECONDS ?= 10
 VAULT_POD ?= vault-0
 VAULT_PODS ?=
 VAULT_UNSEAL_STEPS ?= 3
@@ -562,7 +563,13 @@ velero-backup: ## Create a manual Velero cluster backup
 		'  excludedNamespaces:' \
 		'    - velero' \
 		| $(KUBECTL_ADMIN) apply -f -
-	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get backup "$(VELERO_BACKUP_NAME)"
+	@for attempt in $$(seq 1 "$(VELERO_BACKUP_WAIT_SECONDS)"); do \
+		if $(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get backups.velero.io "$(VELERO_BACKUP_NAME)" >/dev/null 2>&1; then \
+			break; \
+		fi; \
+		sleep 1; \
+	done
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get backups.velero.io "$(VELERO_BACKUP_NAME)"
 
 vault-status: ## Show Vault release, pods, services, route, PVCs, and seal status
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
