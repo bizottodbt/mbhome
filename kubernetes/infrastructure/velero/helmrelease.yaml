@@ -42,7 +42,6 @@ spec:
 
     configuration:
       uploaderType: kopia
-      features: EnableCSI
       defaultBackupTTL: 720h
       defaultVolumesToFsBackup: true
       backupStorageLocation:
@@ -64,6 +63,12 @@ spec:
     backupsEnabled: true
     snapshotsEnabled: false
     deployNodeAgent: true
+
+    nodeAgent:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
 
     schedules:
       daily-cluster:
