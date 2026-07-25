@@ -1781,6 +1781,59 @@ and HPA resource metrics. Check it with:
 make metrics-server-status
 ```
 
+Velero is managed by Flux under:
+
+```text
+kubernetes/infrastructure/velero/
+```
+
+It backs up Kubernetes resources and pod volumes to the external backup-only
+MinIO S3-compatible endpoint:
+
+```text
+https://s3-backup.mbhome.biz
+```
+
+Create the bucket in MinIO before reconciling Velero:
+
+```text
+mbhome-kubernetes-backups
+```
+
+Create a MinIO-local user or access key for Velero. This keeps backup and
+restore independent of Dex/AD availability. The full `mc` runbook lives in:
+
+```text
+kubernetes/infrastructure/velero/README.md
+```
+
+Then create the Kubernetes credential secret from that MinIO key:
+
+```bash
+export VELERO_S3_ACCESS_KEY_ID='...'
+export VELERO_S3_SECRET_ACCESS_KEY='...'
+make velero-s3-secret
+```
+
+After committing and pushing the Velero manifests, reconcile and check it:
+
+```bash
+make flux-reconcile
+make velero-status
+```
+
+Create an on-demand backup:
+
+```bash
+make velero-backup
+```
+
+The scheduled backup is `daily-cluster` at 03:00 and is retained for 30 days.
+For NFS-backed PVCs, Velero uses filesystem backup through the node agent
+instead of CSI snapshots. This is good for general cluster recovery, but
+stateful systems such as CloudNativePG and Vault still need app-aware backup
+and restore drills.
+
 Vault is managed by Flux under:
 
 ```text

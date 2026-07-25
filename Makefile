@@ -60,6 +60,10 @@ KUBERNETES_OIDC_ISSUER_URL ?= https://dex.apps.mbhome.biz
 KUBERNETES_OIDC_CLIENT_ID ?= kubernetes
 DEX_POSTGRES_USER ?= dex
 GRAFANA_ADMIN_USER ?= admin
+VELERO_NAMESPACE ?= velero
+VELERO_S3_CREDENTIALS_SECRET ?= velero-s3-credentials
+VELERO_BACKUP_NAME ?= manual-$(shell date -u +%Y%m%d%H%M%S)
+VELERO_BACKUP_TTL ?= 720h
 VAULT_POD ?= vault-0
 VAULT_PODS ?=
 VAULT_UNSEAL_STEPS ?= 3
@@ -97,7 +101,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -516,6 +520,50 @@ metrics-server-status: ## Show metrics-server and Kubernetes Metrics API status
 	$(KUBECTL_ADMIN) top nodes
 	$(KUBECTL_ADMIN) top pods -A
 
+velero-s3-secret: ## Create/update the Velero MinIO/S3 credential secret
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$VELERO_S3_ACCESS_KEY_ID" || (echo "Export VELERO_S3_ACCESS_KEY_ID before running this target"; exit 1)
+	@test -n "$$VELERO_S3_SECRET_ACCESS_KEY" || (echo "Export VELERO_S3_SECRET_ACCESS_KEY before running this target"; exit 1)
+	$(KUBECTL_ADMIN) create namespace "$(VELERO_NAMESPACE)" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	@tmp="$$(mktemp)"; \
+	trap 'rm -f "$$tmp"' EXIT; \
+	printf '[default]\naws_access_key_id=%s\naws_secret_access_key=%s\n' "$$VELERO_S3_ACCESS_KEY_ID" "$$VELERO_S3_SECRET_ACCESS_KEY" > "$$tmp"; \
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" create secret generic "$(VELERO_S3_CREDENTIALS_SECRET)" --from-file=cloud="$$tmp" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+
+velero-required-secrets-check: ## Confirm Velero MinIO/S3 credentials exist before Flux reconciles Velero
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get secret "$(VELERO_S3_CREDENTIALS_SECRET)" >/dev/null || (echo "Missing $(VELERO_NAMESPACE)/$(VELERO_S3_CREDENTIALS_SECRET). Run: export VELERO_S3_ACCESS_KEY_ID='...' VELERO_S3_SECRET_ACCESS_KEY='...' && make velero-s3-secret"; exit 1)
+
+velero-status: ## Show Velero release, pods, backup locations, schedules, and backups
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	$(KUBECTL_ADMIN) -n flux-system get helmrelease velero
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get pods -o wide
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get deployment,daemonset,svc
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get backupstoragelocations.velero.io
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get schedules.velero.io,backups.velero.io
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get backuprepositories.velero.io,podvolumebackups.velero.io,podvolumerestores.velero.io || true
+
+velero-backup: ## Create a manual Velero cluster backup
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@printf '%s\n' \
+		'---' \
+		'apiVersion: velero.io/v1' \
+		'kind: Backup' \
+		'metadata:' \
+		'  name: $(VELERO_BACKUP_NAME)' \
+		'  namespace: $(VELERO_NAMESPACE)' \
+		'spec:' \
+		'  ttl: $(VELERO_BACKUP_TTL)' \
+		'  storageLocation: default' \
+		'  snapshotVolumes: false' \
+		'  defaultVolumesToFsBackup: true' \
+		'  includedNamespaces:' \
+		'    - "*"' \
+		'  excludedNamespaces:' \
+		'    - velero' \
+		| $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n "$(VELERO_NAMESPACE)" get backup "$(VELERO_BACKUP_NAME)"
+
 vault-status: ## Show Vault release, pods, services, route, PVCs, and seal status
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	$(KUBECTL_ADMIN) -n flux-system get helmrelease vault
@@ -726,7 +774,7 @@ flux-tree: ## Show Flux-managed layers and applied revisions
 	@$(KUBECTL_ADMIN) get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
 		-o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,CHART:.spec.chart.spec.chart,TARGET:.spec.targetNamespace' || true
 
-flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
+flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check velero-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	$(FLUX_ADMIN) reconcile source git flux-system --namespace flux-system
 	$(FLUX_ADMIN) reconcile kustomization infrastructure --namespace flux-system --with-source

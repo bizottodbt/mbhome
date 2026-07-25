@@ -9,6 +9,7 @@ resources:
   - gateway-api
   - monitoring
   - metrics-server
+  - velero
   - vault
   - vault-secrets-operator
   - minio

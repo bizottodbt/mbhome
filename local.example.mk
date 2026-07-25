@@ -33,3 +33,9 @@ FLUX_GITHUB_REPOSITORY := mbhome
 FLUX_GIT_BRANCH := main
 FLUX_GITHUB_PERSONAL := true
 FLUX_GITHUB_PRIVATE := false
+
+# Velero backup helpers. The S3 credentials themselves are exported in the
+# shell before running `make velero-s3-secret`; do not put them in local.mk.
+VELERO_NAMESPACE := velero
+VELERO_S3_CREDENTIALS_SECRET := velero-s3-credentials
+VELERO_BACKUP_TTL := 720h

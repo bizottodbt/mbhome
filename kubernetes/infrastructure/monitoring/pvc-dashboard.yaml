@@ -8,7 +8,7 @@ metadata:
     grafana_dashboard: "1"
     app.kubernetes.io/name: pvc-storage-accounting-dashboard
   annotations:
-    grafana_folder: mbhome
+    grafana_folder: MBHome
 data:
   pvc-storage-accounting.json: |-
     {

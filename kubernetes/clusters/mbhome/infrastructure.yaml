@@ -28,6 +28,10 @@ spec:
       namespace: flux-system
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
+      name: velero
+      namespace: flux-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: vault
       namespace: flux-system
     - apiVersion: helm.toolkit.fluxcd.io/v2
