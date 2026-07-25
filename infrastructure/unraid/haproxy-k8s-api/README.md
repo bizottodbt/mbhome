@@ -15,6 +15,8 @@ talos-api.mbhome.biz:50000 -> Unraid HAProxy -> mbhome-talos-cp-01:50000
                                          \-> mbhome-talos-cp-03:50000
 https://s3.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9768
 https://s3-ui.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9769
+https://s3-backup.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9778
+https://s3-backup-ui.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:9779
 https://nas.mbhome.biz -> Unraid HAProxy -> mbhome-nas-01:80
 https://proxmox.mbhome.biz -> Unraid HAProxy -> mbhome-proxmox-01:8006
                                           \-> mbhome-proxmox-02:8006
@@ -165,6 +167,8 @@ k8s-api.mbhome.biz -> <unraid-ip>
 talos-api.mbhome.biz -> <unraid-ip>
 s3.mbhome.biz -> <unraid-ip>
 s3-ui.mbhome.biz -> <unraid-ip>
+s3-backup.mbhome.biz -> <unraid-ip>
+s3-backup-ui.mbhome.biz -> <unraid-ip>
 nas.mbhome.biz -> <unraid-ip>
 proxmox.mbhome.biz -> <unraid-ip>
 mbhome-nas-01-bmc.mbhome.biz -> <unraid-ip>
@@ -179,6 +183,8 @@ k8s-api.mbhome.biz -> 10.20.30.50
 talos-api.mbhome.biz -> 10.20.30.50
 s3.mbhome.biz -> 10.20.30.50
 s3-ui.mbhome.biz -> 10.20.30.50
+s3-backup.mbhome.biz -> 10.20.30.50
+s3-backup-ui.mbhome.biz -> 10.20.30.50
 nas.mbhome.biz -> 10.20.30.50
 proxmox.mbhome.biz -> 10.20.30.50
 mbhome-nas-01-bmc.mbhome.biz -> 10.20.30.50
@@ -245,6 +251,8 @@ The HTTPS frontend routes MinIO by hostname:
 ```text
 https://s3.mbhome.biz    -> 10.20.30.50:9768
 https://s3-ui.mbhome.biz -> 10.20.30.50:9769
+https://s3-backup.mbhome.biz    -> 10.20.30.50:9778
+https://s3-backup-ui.mbhome.biz -> 10.20.30.50:9779
 ```
 
 Configure the MinIO container on Unraid with matching external URLs when
@@ -255,10 +263,17 @@ MINIO_SERVER_URL=https://s3.mbhome.biz
 MINIO_BROWSER_REDIRECT_URL=https://s3-ui.mbhome.biz
 ```
 
+For the backup-only MinIO instance, use separate external URLs:
+
+```text
+MINIO_SERVER_URL=https://s3-backup.mbhome.biz
+MINIO_BROWSER_REDIRECT_URL=https://s3-backup-ui.mbhome.biz
+```
+
 Backup clients such as Velero should use the S3 API endpoint:
 
 ```text
-https://s3.mbhome.biz
+https://s3-backup.mbhome.biz
 ```
 
 ## Management UIs
@@ -294,6 +309,8 @@ nc -vz k8s-api.mbhome.biz 6443
 nc -vz talos-api.mbhome.biz 50000
 curl -Ik https://s3.mbhome.biz/minio/health/live
 curl -Ik https://s3-ui.mbhome.biz
+curl -Ik https://s3-backup.mbhome.biz/minio/health/live
+curl -Ik https://s3-backup-ui.mbhome.biz
 curl -Ik https://nas.mbhome.biz
 curl -Ik https://proxmox.mbhome.biz
 curl -Ik https://mbhome-proxmox-01-bmc.mbhome.biz

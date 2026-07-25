@@ -30,6 +30,18 @@ zones:
         ttl: 300
         state: present
 
+      - name: s3-backup
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
+      - name: s3-backup-ui
+        type: A
+        value: 10.20.30.50
+        ttl: 300
+        state: present
+
       - name: proxmox
         type: A
         value: 10.20.30.50
