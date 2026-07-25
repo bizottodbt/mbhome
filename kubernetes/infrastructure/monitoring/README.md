@@ -60,14 +60,15 @@ Prometheus stores 15 days of data with a 20GB retention size on `nfs-cache`.
 Grafana uses a 5Gi PVC and Alertmanager uses a 2Gi PVC.
 
 The default Kubernetes PVC dashboards can be misleading with NFS CSI because
-`kubelet_volume_stats_capacity_bytes` reports the backend filesystem/export
-capacity instead of a hard per-PVC quota. This stack adds a custom dashboard,
-`Kubernetes / PVC Request Usage`, and recording rules that compare actual PVC
-usage from `kubelet_volume_stats_used_bytes` with the requested size from
-`kube_persistentvolumeclaim_resource_requests_storage_bytes`.
+`kubelet_volume_stats_*` reports the backend filesystem/export statistics
+instead of hard per-PVC quota statistics. This stack adds a custom dashboard in
+the `MBHome` folder, `Storage / PVC Accounting`, and recording rules that show
+PVC requested sizes separately from NFS backend-reported capacity, used, and
+available bytes.
 
 For the current NFS-backed storage classes, the requested size is an operational
-budget and alerting threshold, not an enforced quota.
+budget, not an enforced quota. Real per-PVC directory usage would require a
+separate exporter that runs `du` against the NFS subdirectories.
 
 `prometheus-node-exporter` runs in `kube-system` instead of `monitoring`
 because it needs host namespaces, hostPath mounts, and a host port to collect

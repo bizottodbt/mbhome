@@ -52,6 +52,7 @@ spec:
           enabled: true
           label: grafana_dashboard
           labelValue: "1"
+          folderAnnotation: grafana_folder
           searchNamespace: ALL
       grafana.ini:
         server:

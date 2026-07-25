@@ -2,13 +2,15 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboard-pvc-request-usage
+  name: grafana-dashboard-pvc-storage-accounting
   namespace: monitoring
   labels:
     grafana_dashboard: "1"
-    app.kubernetes.io/name: pvc-request-usage-dashboard
+    app.kubernetes.io/name: pvc-storage-accounting-dashboard
+  annotations:
+    grafana_folder: mbhome
 data:
-  pvc-request-usage.json: |-
+  pvc-storage-accounting.json: |-
     {
       "annotations": {
         "list": [
@@ -22,33 +24,21 @@ data:
             "hide": true,
             "iconColor": "rgba(0, 211, 255, 1)",
             "name": "Annotations & Alerts",
-            "target": {
-              "limit": 100,
-              "matchAny": false,
-              "tags": [],
-              "type": "dashboard"
-            },
             "type": "dashboard"
           }
         ]
       },
       "editable": true,
-      "fiscalYearStartMonth": 0,
       "graphTooltip": 1,
-      "id": null,
-      "links": [],
       "panels": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "description": "PVC bytes used divided by the PVC requested storage. For NFS CSI subdirectory volumes, this is the useful operational signal because the backend filesystem capacity is shared.",
+          "description": "Declared PVC requests from kube-state-metrics. This is the useful per-PVC storage budget for NFS CSI subdirectory volumes.",
           "fieldConfig": {
             "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
               "custom": {
                 "align": "auto",
                 "cellOptions": {
@@ -57,24 +47,7 @@ data:
                 "inspect": false
               },
               "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 85
-                  },
-                  {
-                    "color": "red",
-                    "value": 100
-                  }
-                ]
-              },
-              "unit": "percent"
+              "unit": "bytes"
             },
             "overrides": []
           },
@@ -88,7 +61,6 @@ data:
           "options": {
             "showHeader": true
           },
-          "pluginVersion": "12.3.0",
           "targets": [
             {
               "datasource": {
@@ -96,7 +68,7 @@ data:
                 "uid": "${DS_PROMETHEUS}"
               },
               "editorMode": "code",
-              "expr": "100 * namespace_persistentvolumeclaim:used_request_ratio{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"}",
+              "expr": "namespace_persistentvolumeclaim:request_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\", storageclass=~\"$storageclass\"}",
               "format": "table",
               "instant": true,
               "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
@@ -104,7 +76,7 @@ data:
               "refId": "A"
             }
           ],
-          "title": "PVC Used Percent Of Requested Size",
+          "title": "PVC Requested Size",
           "type": "table"
         },
         {
@@ -112,61 +84,19 @@ data:
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "description": "Compare actual bytes used with the storage request declared on each PVC.",
+          "description": "Total requested storage by StorageClass. With NFS CSI this is accounting, not enforced capacity.",
           "fieldConfig": {
             "defaults": {
               "color": {
                 "mode": "palette-classic"
               },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 2,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
               "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
               "unit": "bytes"
             },
             "overrides": []
           },
           "gridPos": {
-            "h": 9,
+            "h": 8,
             "w": 12,
             "x": 0,
             "y": 8
@@ -182,7 +112,6 @@ data:
               "showLegend": true
             },
             "tooltip": {
-              "hideZeros": false,
               "mode": "multi",
               "sort": "none"
             }
@@ -194,24 +123,13 @@ data:
                 "uid": "${DS_PROMETHEUS}"
               },
               "editorMode": "code",
-              "expr": "namespace_persistentvolumeclaim:used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"}",
-              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}} used",
+              "expr": "storageclass:persistentvolumeclaim_requests:sum_bytes{storageclass=~\"$storageclass\"}",
+              "legendFormat": "{{storageclass}} requested",
               "range": true,
               "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "namespace_persistentvolumeclaim:request_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"}",
-              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}} requested",
-              "range": true,
-              "refId": "B"
             }
           ],
-          "title": "PVC Used Bytes vs Requested Bytes",
+          "title": "Requested Storage By StorageClass",
           "type": "timeseries"
         },
         {
@@ -219,61 +137,19 @@ data:
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "description": "Capacity reported by kubelet for the mounted volume. With NFS this normally reflects the backend export/filesystem capacity, not a per-PVC quota.",
+          "description": "Kubelet-reported used bytes for each mounted volume. For NFS CSI this normally reflects the backend export/filesystem usage, not the individual PVC subdirectory usage.",
           "fieldConfig": {
             "defaults": {
               "color": {
                 "mode": "palette-classic"
               },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
               "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
               "unit": "bytes"
             },
             "overrides": []
           },
           "gridPos": {
-            "h": 9,
+            "h": 8,
             "w": 12,
             "x": 12,
             "y": 8
@@ -289,7 +165,6 @@ data:
               "showLegend": true
             },
             "tooltip": {
-              "hideZeros": false,
               "mode": "multi",
               "sort": "none"
             }
@@ -301,13 +176,13 @@ data:
                 "uid": "${DS_PROMETHEUS}"
               },
               "editorMode": "code",
-              "expr": "max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"})",
-              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}} backend capacity",
+              "expr": "namespace_persistentvolumeclaim:nfs_backend_used_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"}",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}} backend used",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "Backend-Reported Capacity",
+          "title": "NFS Backend-Reported Used Bytes",
           "type": "timeseries"
         },
         {
@@ -315,63 +190,14 @@ data:
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
+          "description": "Capacity and available bytes as reported by kubelet for the NFS mount. These are backend/export values, not PVC hard limits.",
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "thresholds"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 2,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "line"
-                }
+                "mode": "palette-classic"
               },
               "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 85
-                  },
-                  {
-                    "color": "red",
-                    "value": 100
-                  }
-                ]
-              },
-              "unit": "percent"
+              "unit": "bytes"
             },
             "overrides": []
           },
@@ -379,7 +205,7 @@ data:
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 17
+            "y": 16
           },
           "id": 4,
           "options": {
@@ -392,7 +218,6 @@ data:
               "showLegend": true
             },
             "tooltip": {
-              "hideZeros": false,
               "mode": "multi",
               "sort": "none"
             }
@@ -404,20 +229,31 @@ data:
                 "uid": "${DS_PROMETHEUS}"
               },
               "editorMode": "code",
-              "expr": "100 * namespace_persistentvolumeclaim:used_request_ratio{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"}",
-              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
+              "expr": "namespace_persistentvolumeclaim:nfs_backend_capacity_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"}",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}} backend capacity",
               "range": true,
               "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editorMode": "code",
+              "expr": "namespace_persistentvolumeclaim:nfs_backend_available_bytes{namespace=~\"$namespace\", persistentvolumeclaim=~\"$persistentvolumeclaim\"}",
+              "legendFormat": "{{namespace}}/{{persistentvolumeclaim}} backend available",
+              "range": true,
+              "refId": "B"
             }
           ],
-          "title": "PVC Used Percent Of Requested Size Over Time",
+          "title": "NFS Backend-Reported Capacity And Available Bytes",
           "type": "timeseries"
         }
       ],
-      "preload": false,
       "refresh": "30s",
       "schemaVersion": 42,
       "tags": [
+        "mbhome",
         "kubernetes",
         "storage",
         "pvc",
@@ -436,10 +272,8 @@ data:
             "label": "Datasource",
             "multi": false,
             "name": "DS_PROMETHEUS",
-            "options": [],
             "query": "prometheus",
             "refresh": 1,
-            "regex": "",
             "type": "datasource"
           },
           {
@@ -453,20 +287,16 @@ data:
               "type": "prometheus",
               "uid": "${DS_PROMETHEUS}"
             },
-            "definition": "label_values(namespace_persistentvolumeclaim:request_bytes, namespace)",
+            "definition": "label_values(namespace_persistentvolumeclaim:request_bytes, storageclass)",
             "hide": 0,
             "includeAll": true,
-            "label": "Namespace",
+            "label": "StorageClass",
             "multi": true,
-            "name": "namespace",
-            "options": [],
+            "name": "storageclass",
             "query": {
-              "qryType": 1,
-              "query": "label_values(namespace_persistentvolumeclaim:request_bytes, namespace)",
-              "refId": "PrometheusVariableQueryEditor-VariableQuery"
+              "query": "label_values(namespace_persistentvolumeclaim:request_bytes, storageclass)"
             },
             "refresh": 1,
-            "regex": "",
             "sort": 1,
             "type": "query"
           },
@@ -481,20 +311,40 @@ data:
               "type": "prometheus",
               "uid": "${DS_PROMETHEUS}"
             },
-            "definition": "label_values(namespace_persistentvolumeclaim:request_bytes{namespace=~\"$namespace\"}, persistentvolumeclaim)",
+            "definition": "label_values(namespace_persistentvolumeclaim:request_bytes{storageclass=~\"$storageclass\"}, namespace)",
+            "hide": 0,
+            "includeAll": true,
+            "label": "Namespace",
+            "multi": true,
+            "name": "namespace",
+            "query": {
+              "query": "label_values(namespace_persistentvolumeclaim:request_bytes{storageclass=~\"$storageclass\"}, namespace)"
+            },
+            "refresh": 1,
+            "sort": 1,
+            "type": "query"
+          },
+          {
+            "allValue": ".*",
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": "$__all"
+            },
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "definition": "label_values(namespace_persistentvolumeclaim:request_bytes{namespace=~\"$namespace\", storageclass=~\"$storageclass\"}, persistentvolumeclaim)",
             "hide": 0,
             "includeAll": true,
             "label": "PVC",
             "multi": true,
             "name": "persistentvolumeclaim",
-            "options": [],
             "query": {
-              "qryType": 1,
-              "query": "label_values(namespace_persistentvolumeclaim:request_bytes{namespace=~\"$namespace\"}, persistentvolumeclaim)",
-              "refId": "PrometheusVariableQueryEditor-VariableQuery"
+              "query": "label_values(namespace_persistentvolumeclaim:request_bytes{namespace=~\"$namespace\", storageclass=~\"$storageclass\"}, persistentvolumeclaim)"
             },
             "refresh": 1,
-            "regex": "",
             "sort": 1,
             "type": "query"
           }
@@ -504,10 +354,8 @@ data:
         "from": "now-6h",
         "to": "now"
       },
-      "timepicker": {},
       "timezone": "",
-      "title": "Kubernetes / PVC Request Usage",
+      "title": "Storage / PVC Accounting",
       "uid": "k8s-pvc-request-usage",
-      "version": 1,
-      "weekStart": ""
+      "version": 1
     }
