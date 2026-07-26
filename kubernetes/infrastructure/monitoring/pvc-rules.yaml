@@ -14,7 +14,7 @@ spec:
         - record: namespace_persistentvolumeclaim:request_bytes
           expr: |
             max by (namespace, persistentvolumeclaim, storageclass) (
-              kube_persistentvolumeclaim_resource_requests_storage_bytes
+              kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace!="velero"}
             )
 
         - record: storageclass:persistentvolumeclaim_requests:sum_bytes
@@ -26,17 +26,17 @@ spec:
         - record: namespace_persistentvolumeclaim:nfs_backend_capacity_bytes
           expr: |
             max by (namespace, persistentvolumeclaim) (
-              kubelet_volume_stats_capacity_bytes
+              kubelet_volume_stats_capacity_bytes{namespace!="velero"}
             )
 
         - record: namespace_persistentvolumeclaim:nfs_backend_used_bytes
           expr: |
             max by (namespace, persistentvolumeclaim) (
-              kubelet_volume_stats_used_bytes
+              kubelet_volume_stats_used_bytes{namespace!="velero"}
             )
 
         - record: namespace_persistentvolumeclaim:nfs_backend_available_bytes
           expr: |
             max by (namespace, persistentvolumeclaim) (
-              kubelet_volume_stats_available_bytes
+              kubelet_volume_stats_available_bytes{namespace!="velero"}
             )

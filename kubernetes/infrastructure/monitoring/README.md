@@ -66,6 +66,11 @@ the `MBHome` folder, `Storage / PVC Accounting`, and recording rules that show
 PVC requested sizes separately from NFS backend-reported capacity, used, and
 available bytes.
 
+The custom PVC accounting rules intentionally exclude the `velero` namespace.
+Velero backup activity can create short-lived backup pods and repository/cache
+volumes that are noisy in storage dashboards and may keep backup storage more
+active than desired.
+
 For the current NFS-backed storage classes, the requested size is an operational
 budget, not an enforced quota. Real per-PVC directory usage would require a
 separate exporter that runs `du` against the NFS subdirectories.
