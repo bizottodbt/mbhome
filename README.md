@@ -1781,20 +1781,21 @@ and HPA resource metrics. Check it with:
 make metrics-server-status
 ```
 
-Velero is managed by Flux under:
+Velero manifests are kept in the repo, but Velero is currently not included in
+the default Flux infrastructure kustomization:
 
 ```text
 kubernetes/infrastructure/velero/
 ```
 
-It backs up Kubernetes resources and pod volumes to the external backup-only
+When enabled, it backs up Kubernetes resources and pod volumes to the external backup-only
 MinIO S3-compatible endpoint:
 
 ```text
 https://s3-backup.mbhome.biz
 ```
 
-Create the bucket in MinIO before reconciling Velero:
+Create the bucket in MinIO before enabling and reconciling Velero:
 
 ```text
 mbhome-kubernetes-backups
@@ -1815,7 +1816,8 @@ export VELERO_S3_SECRET_ACCESS_KEY='...'
 make velero-s3-secret
 ```
 
-After committing and pushing the Velero manifests, reconcile and check it:
+To enable it later, add `velero` back to `kubernetes/infrastructure/kustomization.yaml`,
+commit, push, reconcile, and check it:
 
 ```bash
 make flux-reconcile
