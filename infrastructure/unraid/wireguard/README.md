@@ -66,6 +66,19 @@ WG_EASY_UI_BIND_IP=10.20.30.50
 WG_EASY_UI_PORT=51128
 ```
 
+`WIREGUARD_PORT` is used for both the published UDP listener and the public
+endpoint port that should be written into new peer configs:
+
+```text
+Endpoint = vpn.mbhome.biz:51028
+```
+
+For wg-easy v15, the setup values are persisted under `./wireguard/` after the
+first setup. If a client is still generated as `vpn.mbhome.biz:51820`, update
+the host/port in the wg-easy setup/admin UI, then recreate or edit that peer.
+For a fresh `./wireguard/` volume, enabling `WG_EASY_INIT_ENABLED=true` lets the
+first-run setup use `WIREGUARD_PORT` through `INIT_PORT`.
+
 Start the service:
 
 ```bash
@@ -83,6 +96,13 @@ on the router:
 
 ```text
 UDP/51028 -> 10.20.30.50:51028
+```
+
+If you change `WIREGUARD_PORT` in `.env`, update the router port forwarding to
+match that value:
+
+```text
+UDP/WIREGUARD_PORT -> 10.20.30.50:WIREGUARD_PORT
 ```
 
 ## Dynamic DNS
@@ -116,10 +136,28 @@ chown 1000:1000 secrets/cloudflare_api_token.txt
 chmod 0400 secrets/cloudflare_api_token.txt
 ```
 
+The file must contain only the raw Cloudflare token value. Do not include
+quotes, `Bearer`, `CLOUDFLARE_API_TOKEN=`, or any surrounding whitespace.
+
 The `cloudflare-ddns` container runs as `DDNS_UID:DDNS_GID`, which defaults to
 `1000:1000`. If you change those values in `.env`, also change the file owner to
 the same UID/GID. If ownership is awkward on Unraid, `chmod 0444
 secrets/cloudflare_api_token.txt` also works, but is less private.
+
+Validate the token before starting the container:
+
+```bash
+TOKEN="$(tr -d '\r\n' < secrets/cloudflare_api_token.txt)"
+curl -fsS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  https://api.cloudflare.com/client/v4/user/tokens/verify
+unset TOKEN
+```
+
+If `cloudflare-ddns` logs `Invalid request headers (6003)`, recreate the secret
+file from the raw token. That error normally means Cloudflare rejected the
+Authorization header before it could check the zone.
 
 Start or refresh the stack:
 
