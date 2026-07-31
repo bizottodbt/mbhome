@@ -1,0 +1,66 @@
+services:
+  cloudflare-ddns:
+    image: favonia/cloudflare-ddns:1
+    container_name: wireguard-cloudflare-ddns
+    restart: unless-stopped
+    user: "${DDNS_UID:-1000}:${DDNS_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CLOUDFLARE_API_TOKEN_FILE: /run/secrets/cloudflare_api_token
+      IP4_DOMAINS: "${DDNS_DOMAINS:?Set DDNS_DOMAINS in .env, for example vpn.mbhome.biz}"
+      IP6_PROVIDER: "${DDNS_IP6_PROVIDER:-none}"
+      PROXIED: "${DDNS_PROXIED:-false}"
+    secrets:
+      - cloudflare_api_token
+
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:15
+    container_name: wg-easy
+    environment:
+      # The web UI listens inside the container on TCP/51821.
+      PORT: "51821"
+      HOST: "0.0.0.0"
+      # Keep the UI on the LAN only. Set this to false if you later put it
+      # behind an HTTPS reverse proxy.
+      INSECURE: "${WG_EASY_INSECURE:-true}"
+      # Values used when wg-easy generates WireGuard peer configs.
+      WG_HOST: "${WG_HOST:?Set WG_HOST in .env to the public DNS name or IP clients use}"
+      WG_PORT: "${WIREGUARD_PORT:-51028}"
+      WG_DEFAULT_ADDRESS: "${WG_DEFAULT_ADDRESS:-10.29.0.x}"
+      WG_DEFAULT_DNS: "${WG_DEFAULT_DNS:-10.20.30.11,10.20.30.12,10.20.30.1}"
+      WG_ALLOWED_IPS: "${WG_ALLOWED_IPS:-10.20.30.0/24,10.20.90.0/24}"
+      WG_DEVICE: "${WG_DEVICE:-eth0}"
+    networks:
+      wg:
+        ipv4_address: 172.31.42.42
+    volumes:
+      - ./wireguard:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "${WIREGUARD_BIND_IP:-0.0.0.0}:${WIREGUARD_PORT:-51028}:51820/udp"
+      - "${WG_EASY_UI_BIND_IP:-10.20.30.50}:${WG_EASY_UI_PORT:-51128}:51821/tcp"
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+      # - NET_RAW # ⚠️ Uncomment if using Podman
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+networks:
+  wg:
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.31.42.0/24
+
+secrets:
+  cloudflare_api_token:
+    file: ./secrets/cloudflare_api_token.txt
