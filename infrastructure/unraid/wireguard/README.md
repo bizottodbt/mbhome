@@ -61,7 +61,7 @@ WIREGUARD_PORT=51028
 DDNS_DOMAINS=vpn.mbhome.biz
 WG_DEFAULT_ADDRESS=10.29.0.x
 WG_DEFAULT_DNS=10.20.30.11,10.20.30.12,10.20.30.1
-WG_ALLOWED_IPS=10.20.30.0/24,10.20.90.0/24
+WG_ALLOWED_IPS=10.20.30.0/24
 WG_EASY_UI_BIND_IP=10.20.30.50
 WG_EASY_UI_PORT=51128
 ```
@@ -112,12 +112,14 @@ Store the token locally on Unraid:
 ```bash
 mkdir -p secrets
 printf '%s' '<cloudflare-api-token>' > secrets/cloudflare_api_token.txt
+chown 1000:1000 secrets/cloudflare_api_token.txt
 chmod 0400 secrets/cloudflare_api_token.txt
 ```
 
-If the DDNS container cannot read the token, either loosen the file permission
-to `0440`/`0444` or adjust `DDNS_UID` and `DDNS_GID` in `.env` to match the file
-owner.
+The `cloudflare-ddns` container runs as `DDNS_UID:DDNS_GID`, which defaults to
+`1000:1000`. If you change those values in `.env`, also change the file owner to
+the same UID/GID. If ownership is awkward on Unraid, `chmod 0444
+secrets/cloudflare_api_token.txt` also works, but is less private.
 
 Start or refresh the stack:
 
@@ -147,17 +149,27 @@ arrangement.
 For remote admin access to the homelab, configure clients as split tunnel with:
 
 ```text
-WG_ALLOWED_IPS=10.20.30.0/24,10.20.90.0/24
+WG_ALLOWED_IPS=10.20.30.0/24
 ```
 
 This writes the following allowed IPs into newly generated peer configs:
 
 ```text
-10.20.30.0/24, 10.20.90.0/24
+10.20.30.0/24
 ```
 
-This routes the management LAN and storage VLAN through the VPN, but keeps the
-client's normal internet traffic local.
+This routes the management LAN through the VPN, but keeps the client's normal
+internet traffic local.
+
+Keep the storage VLAN off normal VPN clients. The remote internet connection is
+not going to benefit from the 10Gbps storage path, and it is cleaner to reach a
+lab node over the management LAN first when storage-network testing is needed.
+For a temporary admin/debug peer that really needs direct storage VLAN access,
+use:
+
+```text
+WG_ALLOWED_IPS=10.20.30.0/24,10.20.90.0/24
+```
 
 If you want full-tunnel VPN later, use:
 
