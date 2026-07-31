@@ -19,14 +19,14 @@ The `172.31.42.0/24` subnet in `docker-compose.yml` is only for Docker's
 private bridge network. It is not the VPN client subnet and should not match a
 real LAN, VLAN, storage, or future routed network.
 
-The WireGuard client tunnel subnet is configured at container launch through:
+The WireGuard client tunnel subnet is configured during the wg-easy v15
+first-run setup through:
 
 ```text
-WG_DEFAULT_ADDRESS=10.29.0.x
+WG_TUNNEL_IPV4_CIDR=10.29.0.0/24
 ```
 
-`wg-easy` uses the `x` placeholder when generating peer addresses. That example
-creates clients in the `10.29.0.0/24` VPN subnet.
+That example creates clients in the `10.29.0.0/24` VPN subnet.
 
 Pick a VPN client subnet that does not overlap any home, hotel, mobile hotspot,
 LAN, storage, Kubernetes, or Docker network. A good example is:
@@ -59,11 +59,13 @@ Adjust the values:
 WG_HOST=vpn.mbhome.biz
 WIREGUARD_PORT=51028
 DDNS_DOMAINS=vpn.mbhome.biz
-WG_DEFAULT_ADDRESS=10.29.0.x
+WG_TUNNEL_IPV4_CIDR=10.29.0.0/24
 WG_DEFAULT_DNS=10.20.30.11,10.20.30.12,10.20.30.1
-WG_ALLOWED_IPS=10.20.30.0/24
 WG_EASY_UI_BIND_IP=10.20.30.50
 WG_EASY_UI_PORT=51128
+WG_EASY_INIT_ENABLED=true
+WG_EASY_INIT_USERNAME=admin
+WG_EASY_INIT_PASSWORD=<long-local-admin-password>
 ```
 
 `WIREGUARD_PORT` is used for both the published UDP listener and the public
@@ -73,11 +75,17 @@ endpoint port that should be written into new peer configs:
 Endpoint = vpn.mbhome.biz:51028
 ```
 
-For wg-easy v15, the setup values are persisted under `./wireguard/` after the
-first setup. If a client is still generated as `vpn.mbhome.biz:51820`, update
-the host/port in the wg-easy setup/admin UI, then recreate or edit that peer.
-For a fresh `./wireguard/` volume, enabling `WG_EASY_INIT_ENABLED=true` lets the
-first-run setup use `WIREGUARD_PORT` through `INIT_PORT`.
+For wg-easy v15, the setup values are persisted in a SQLite database under
+`./wireguard/` after the first setup. `WG_EASY_INIT_ENABLED=false` does not skip
+initialization; it only disables unattended initialization and makes wg-easy use
+the web setup wizard instead. To make `.env` drive the first setup, set
+`WG_EASY_INIT_ENABLED=true` before the first container start.
+
+After `./wireguard/` contains an initialized wg-easy v15 database, changing
+`.env` does not rewrite wg-easy settings or existing peers. If a client is still
+generated as `vpn.mbhome.biz:51820`, update the host/port in the wg-easy admin
+UI, then recreate or edit that peer. To re-run unattended setup from scratch,
+stop the stack and move `./wireguard/` out of the way first.
 
 Start the service:
 
@@ -184,13 +192,8 @@ arrangement.
 
 ## Client Routes
 
-For remote admin access to the homelab, configure clients as split tunnel with:
-
-```text
-WG_ALLOWED_IPS=10.20.30.0/24
-```
-
-This writes the following allowed IPs into newly generated peer configs:
+For remote admin access to the homelab, configure new clients in the wg-easy UI
+as split tunnel with the following allowed IPs:
 
 ```text
 10.20.30.0/24
@@ -206,7 +209,7 @@ For a temporary admin/debug peer that really needs direct storage VLAN access,
 use:
 
 ```text
-WG_ALLOWED_IPS=10.20.30.0/24,10.20.90.0/24
+10.20.30.0/24,10.20.90.0/24
 ```
 
 If you want full-tunnel VPN later, use:

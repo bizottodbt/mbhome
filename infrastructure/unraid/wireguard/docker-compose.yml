@@ -27,19 +27,17 @@ services:
       # Keep the UI on the LAN only. Set this to false if you later put it
       # behind an HTTPS reverse proxy.
       INSECURE: "${WG_EASY_INSECURE:-true}"
-      # Values used when wg-easy generates WireGuard peer configs.
-      WG_HOST: "${WG_HOST:?Set WG_HOST in .env to the public DNS name or IP clients use}"
-      WG_PORT: "${WIREGUARD_PORT:-51028}"
-      WG_CONFIG_PORT: "${WIREGUARD_PORT:-51028}"
-      WG_DEFAULT_ADDRESS: "${WG_DEFAULT_ADDRESS:-10.29.0.x}"
-      WG_DEFAULT_DNS: "${WG_DEFAULT_DNS:-10.20.30.11,10.20.30.12,10.20.30.1}"
-      WG_ALLOWED_IPS: "${WG_ALLOWED_IPS:-10.20.30.0/24}"
-      WG_DEVICE: "${WG_DEVICE:-eth0}"
-      # wg-easy v15 uses INIT_* only during the first setup. After that, the
-      # host and port are stored in wg-easy's persisted config.
+      DISABLE_IPV6: "${WG_EASY_DISABLE_IPV6:-true}"
+      # wg-easy v15 uses INIT_* only during the first setup. After that,
+      # settings are stored in wg-easy's persisted SQLite database.
       INIT_ENABLED: "${WG_EASY_INIT_ENABLED:-false}"
+      INIT_USERNAME: "${WG_EASY_INIT_USERNAME:-admin}"
+      INIT_PASSWORD: "${WG_EASY_INIT_PASSWORD:-change-me-before-first-run}"
       INIT_HOST: "${WG_HOST:?Set WG_HOST in .env to the public DNS name or IP clients use}"
       INIT_PORT: "${WIREGUARD_PORT:-51028}"
+      INIT_DNS: "${WG_DEFAULT_DNS:-10.20.30.11,10.20.30.12,10.20.30.1}"
+      INIT_IPV4_CIDR: "${WG_TUNNEL_IPV4_CIDR:-10.29.0.0/24}"
+      INIT_IPV6_CIDR: "${WG_TUNNEL_IPV6_CIDR:-fd00:29::/64}"
     networks:
       wg:
         ipv4_address: 172.31.42.42
