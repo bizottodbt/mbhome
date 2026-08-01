@@ -1,0 +1,17 @@
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: default
+  namespace: immich-album-sync
+  labels:
+    app.kubernetes.io/name: immich-album-sync
+spec:
+  vaultConnectionRef: vault-secrets-operator/default
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: app-immich-album-sync
+    serviceAccount: vault-sync
+    audiences:
+      - vault
