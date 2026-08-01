@@ -10,12 +10,12 @@ General:
   ShowImageDesc: true
   ShowPeopleDesc: true
   ShowTagsDesc: true
-  ShowAlbumName: true
+  ShowAlbumName: false
   ShowImageLocation: true
   UnitSystem: "metric"
   Language: "en"
-  ShowWeatherDescription: true
-  WeatherLatLong: "59.3293,18.0686"
+  ShowWeatherDescription: false
+  WeatherLatLong: "57.769451,12.268760" #Lerum
   WeatherApiKey: "__WEATHER_API_KEY__"
   ImageZoom: true
   ImagePan: false
@@ -25,8 +25,8 @@ General:
 Accounts:
   - ImmichServerUrl: "https://immich.mbhome.biz"
     ApiKeyFile: "/app/secrets/immich-api-key"
-    ShowMemories: true
-    ShowFavorites: true
+    ShowMemories: false
+    ShowFavorites: false
     ShowArchived: false
     ShowVideos: true
     # Limit the frame to specific Immich albums by UUID.
