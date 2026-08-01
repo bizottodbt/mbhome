@@ -2,6 +2,8 @@ General:
   DownloadImages: false
   Interval: 45
   TransitionDuration: 2
+  PhotoDateFormat: 'yyyy-MM-dd'  # string
+  ImageLocationFormat: 'City,Country'
   ShowClock: true
   ClockFormat: "HH:mm"
   ClockDateFormat: "eee, MMM d"
@@ -17,9 +19,10 @@ General:
   ShowWeatherDescription: false
   WeatherLatLong: "57.769451,12.268760" #Lerum
   WeatherApiKey: "__WEATHER_API_KEY__"
+  BaseFontSize: '20px'
   ImageZoom: true
   ImagePan: false
-  ImageFill: true
+  ImageFill: false
   PlayAudio: false
   Layout: "splitview"
 Accounts:
