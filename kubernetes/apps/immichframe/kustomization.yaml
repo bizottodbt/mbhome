@@ -1,0 +1,15 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - vaultstaticsecret.yaml
+  - deployment.yaml
+  - service.yaml
+  - httproute.yaml
+
+configMapGenerator:
+  - name: immichframe-config
+    namespace: immichframe
+    files:
+      - Settings.yml=Settings.yml

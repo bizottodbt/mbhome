@@ -1,0 +1,36 @@
+General:
+  DownloadImages: false
+  Interval: 45
+  TransitionDuration: 2
+  ShowClock: true
+  ClockFormat: "HH:mm"
+  ClockDateFormat: "eee, MMM d"
+  ShowProgressBar: true
+  ShowPhotoDate: true
+  ShowImageDesc: true
+  ShowPeopleDesc: true
+  ShowTagsDesc: true
+  ShowAlbumName: true
+  ShowImageLocation: true
+  UnitSystem: "metric"
+  Language: "en"
+  ShowWeatherDescription: true
+  WeatherLatLong: "59.3293,18.0686"
+  WeatherApiKey: "__WEATHER_API_KEY__"
+  ImageZoom: true
+  ImagePan: false
+  ImageFill: true
+  PlayAudio: false
+  Layout: "splitview"
+Accounts:
+  - ImmichServerUrl: "https://immich.mbhome.biz"
+    ApiKeyFile: "/app/secrets/immich-api-key"
+    ShowMemories: true
+    ShowFavorites: true
+    ShowArchived: false
+    ShowVideos: true
+    # Limit the frame to specific Immich albums by UUID.
+    # You can get the UUID from an Immich album URL, for example:
+    # https://immich.example.com/albums/85c85b29-c95d-4a8b-90f7-c87da1d518ba
+    Albums:
+      - "f461c05a-0dd4-484f-bd51-18fcbda860de"
