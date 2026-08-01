@@ -59,7 +59,9 @@ def find_album_id(base_url, api_key, album_name):
 
 def matching_asset_ids(base_url, api_key, person_id):
     page = 1
+    total = 0
     asset_ids = []
+    pages_loaded = 0
     page_size = int(env("IMMICH_PAGE_SIZE", "1000"))
     created_after = env("IMMICH_CREATED_AFTER", "")
     query = env("IMMICH_SEARCH_QUERY", "does not work without it")
@@ -77,11 +79,14 @@ def matching_asset_ids(base_url, api_key, person_id):
 
         result = request_json("POST", base_url, "search/smart", api_key, payload)
         assets = result.get("assets", {})
-        asset_ids.extend(item["id"] for item in assets.get("items", []))
+        total = int(assets.get("total", total))
+        items = assets.get("items", [])
+        pages_loaded += 1
+        asset_ids.extend(item["id"] for item in items)
         next_page = assets.get("nextPage")
         page = int(next_page) if next_page is not None else None
 
-    return asset_ids
+    return total, asset_ids, pages_loaded
 
 
 def chunks(items, size):
@@ -106,17 +111,41 @@ def main():
     person_name = env("IMMICH_PERSON_NAME", required=True)
     album_name = env("IMMICH_ALBUM_NAME", required=True)
 
+    total_mikaela_pictures = 0
+    total_requested = 0
+    total_added_or_present = 0
+
     for index, key in enumerate(api_keys(), start=1):
         person_id = find_person_id(base_url, key, person_name)
         album_id = find_album_id(base_url, key, album_name)
-        asset_ids = matching_asset_ids(base_url, key, person_id)
+        total, asset_ids, pages_loaded = matching_asset_ids(base_url, key, person_id)
+
+        total_mikaela_pictures += total
 
         if not asset_ids:
-            print(f"Account {index}: no matching assets found")
+            print(f"Account {index}: {person_name}'s photos found: 0")
             continue
 
         added = add_assets_to_album(base_url, key, album_id, asset_ids)
-        print(f"Account {index}: requested={len(asset_ids)} added_or_already_present={added}")
+        total_requested += len(asset_ids)
+        total_added_or_present += added
+
+        print(f"Account {index}: {person_name}'s ID: {person_id}")
+        print(f"Account {index}: {person_name}'s album ID: {album_id}")
+        print(f"Account {index}: search pages loaded: {pages_loaded}")
+        print(f"Account {index}: {person_name}'s photos found: {total}")
+        print(f"Account {index}: {person_name}'s photos loaded from pagination: {len(asset_ids)}")
+        print(f"Account {index}: add-to-album requested: {len(asset_ids)}")
+        print(f"Account {index}: add-to-album successful or already present: {added}")
+        if len(asset_ids) != total:
+            print(
+                f"Account {index}: WARNING pagination loaded {len(asset_ids)} assets, "
+                f"but Immich reported {total} total assets"
+            )
+
+    print(f"Total pictures of {person_name}: {total_mikaela_pictures}")
+    print(f"Total add-to-album requested: {total_requested}")
+    print(f"Total add-to-album successful or already present: {total_added_or_present}")
 
 
 if __name__ == "__main__":

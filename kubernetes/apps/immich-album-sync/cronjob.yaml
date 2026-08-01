@@ -35,8 +35,8 @@ spec:
                 - sh
                 - -ec
                 - |
-                  python /app/scripts/count-script.py
                   python /app/scripts/sync-script.py
+                  python /app/scripts/count-script.py
               envFrom:
                 - configMapRef:
                     name: immich-album-sync-settings

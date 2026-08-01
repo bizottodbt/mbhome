@@ -60,6 +60,7 @@ def matching_assets(base_url, api_key, person_id):
     page = 1
     total = 0
     asset_ids = []
+    pages_loaded = 0
     page_size = int(env("IMMICH_PAGE_SIZE", "1000"))
     created_after = env("IMMICH_CREATED_AFTER", "")
     query = env("IMMICH_SEARCH_QUERY", "does not work without it")
@@ -78,11 +79,13 @@ def matching_assets(base_url, api_key, person_id):
         result = request_json("POST", base_url, "search/smart", api_key, payload)
         assets = result.get("assets", {})
         total = int(assets.get("total", total))
-        asset_ids.extend(item["id"] for item in assets.get("items", []))
+        items = assets.get("items", [])
+        pages_loaded += 1
+        asset_ids.extend(item["id"] for item in items)
         next_page = assets.get("nextPage")
         page = int(next_page) if next_page is not None else None
 
-    return total, asset_ids
+    return total, asset_ids, pages_loaded
 
 
 def main():
@@ -90,24 +93,39 @@ def main():
     person_name = env("IMMICH_PERSON_NAME", required=True)
     album_name = env("IMMICH_ALBUM_NAME", required=True)
 
-    total_matching_assets = 0
-    album_count = None
+    total_mikaela_pictures = 0
+    total_pictures_in_album = 0
 
     for index, key in enumerate(api_keys(), start=1):
         person_id = find_person_id(base_url, key, person_name)
         album = find_album(base_url, key, album_name)
-        total, asset_ids = matching_assets(base_url, key, person_id)
+        total, asset_ids, pages_loaded = matching_assets(base_url, key, person_id)
 
-        total_matching_assets += total
-        album_count = album.get("assetCount", album_count)
+        account_album_count = int(album.get("assetCount", 0))
+        total_mikaela_pictures += total
+        total_pictures_in_album += account_album_count
 
-        print(f"Account {index}: person_id={person_id}")
-        print(f"Account {index}: album_id={album['id']}")
-        print(f"Account {index}: matching_assets_total={total}")
-        print(f"Account {index}: matching_assets_loaded={len(asset_ids)}")
+        print(f"Account {index}: {person_name}'s ID: {person_id}")
+        print(f"Account {index}: {person_name}'s album ID: {album['id']}")
+        print(f"Account {index}: search pages loaded: {pages_loaded}")
+        print(f"Account {index}: {person_name}'s photos found: {total}")
+        print(f"Account {index}: {person_name}'s photos loaded from pagination: {len(asset_ids)}")
+        print(f"Account {index}: pictures in {album_name}: {account_album_count}")
+        if len(asset_ids) != total:
+            print(
+                f"Account {index}: WARNING pagination loaded {len(asset_ids)} assets, "
+                f"but Immich reported {total} total assets"
+            )
 
-    print(f"Total matching assets: {total_matching_assets}")
-    print(f'Total assets in album "{album_name}": {album_count}')
+    print(f"Total pictures of {person_name}: {total_mikaela_pictures}")
+    print(f"Total pictures in {album_name}: {total_pictures_in_album}")
+    if total_mikaela_pictures == total_pictures_in_album:
+        print("Album sync status: OK - totals match")
+    else:
+        print(
+            "Album sync status: MISMATCH - "
+            f"{total_mikaela_pictures - total_pictures_in_album} pictures difference"
+        )
 
 
 if __name__ == "__main__":
