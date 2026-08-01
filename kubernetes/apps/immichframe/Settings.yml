@@ -1,6 +1,6 @@
 General:
   DownloadImages: false
-  Interval: 45
+  Interval: 35
   TransitionDuration: 2
   PhotoDateFormat: 'yyyy-MM-dd'  # string
   ImageLocationFormat: 'City,Country'
