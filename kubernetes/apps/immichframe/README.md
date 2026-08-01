@@ -13,6 +13,8 @@ API key are synced from Vault by Vault Secrets Operator.
 Seed the Vault secret before reconciling the app:
 
 ```bash
+make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=immichframe
+
 kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
   --context admin@mbhome \
   -n vault exec -it vault-0 -- vault login
@@ -45,6 +47,10 @@ The keys in Vault are mounted into the pod at:
 ImmichFrame needs an Immich API key with read-only photo/library permissions.
 Weather uses OpenWeatherMap. The location is configured in `Settings.yml` with
 `WeatherLatLong`, and temperature units follow `UnitSystem`.
+
+Vault Secrets Operator checks the Vault path every `5m`. When the synced Secret
+changes, it restarts the `immichframe` Deployment so the init container can
+render a fresh `Settings.yml`.
 
 Validate after Flux reconciles:
 

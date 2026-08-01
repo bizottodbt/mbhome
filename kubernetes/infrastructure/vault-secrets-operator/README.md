@@ -15,6 +15,31 @@ VaultConnection/default -> http://vault-active.vault.svc.cluster.local:8200
 VaultAuth/default      -> Kubernetes auth role vault-secrets-operator
 ```
 
+Application namespaces should define their own local `VaultAuth/default` and
+`vault-sync` ServiceAccount. The app-level Vault role should grant only the
+namespace's own path:
+
+```text
+mbhome/apps/<namespace>
+```
+
+For example, ImmichFrame uses `mbhome/apps/immichframe`.
+
+Bootstrap an app namespace with:
+
+```bash
+make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=immichframe
+```
+
+That creates a Vault policy and Kubernetes auth role named
+`app-<namespace>`, bound to the `vault-sync` ServiceAccount in that namespace.
+The resulting access is limited to:
+
+```text
+mbhome/apps/<namespace>
+mbhome/apps/<namespace>/*
+```
+
 Before the default `VaultAuth` can authenticate, bootstrap Vault's Kubernetes
 auth method:
 
@@ -26,11 +51,10 @@ That target logs in interactively to Vault, enables/configures Kubernetes auth,
 creates the `vault-secrets-operator` policy, and binds it to the
 `vault-sync` service account in the `vault-secrets-operator` namespace.
 
-The initial policy is read-only and scoped to future platform/application paths:
+The initial shared policy is read-only and scoped to platform paths:
 
 ```text
 mbhome/platform/*
-mbhome/apps/*
 ```
 
 The mount path comes from `VAULT_KV_MOUNT`, which defaults to `mbhome`.

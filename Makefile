@@ -89,6 +89,10 @@ VAULT_SECRETS_OPERATOR_SERVICE_ACCOUNT ?= vault-sync
 VAULT_SECRETS_OPERATOR_ROLE ?= vault-secrets-operator
 VAULT_SECRETS_OPERATOR_POLICY ?= vault-secrets-operator
 VAULT_SECRETS_OPERATOR_AUDIENCE ?= vault
+VAULT_APP_NAMESPACE ?= immichframe
+VAULT_APP_SERVICE_ACCOUNT ?= vault-sync
+VAULT_APP_ROLE ?= app-$(VAULT_APP_NAMESPACE)
+VAULT_APP_POLICY ?= app-$(VAULT_APP_NAMESPACE)
 CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
 GATEWAY_API_VERSION ?= v1.4.1
@@ -102,7 +106,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immichframe-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immichframe-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -656,8 +660,19 @@ vault-secrets-operator-bootstrap: ## Interactively configure Vault Kubernetes au
 	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
 	-$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault auth enable -path="$(VAULT_KUBERNETES_AUTH_MOUNT)" kubernetes
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault write auth/"$(VAULT_KUBERNETES_AUTH_MOUNT)"/config kubernetes_host="https://kubernetes.default.svc:443"
-	@printf '%s\n' 'path "$(VAULT_KV_MOUNT)/metadata/platform" {' '  capabilities = ["list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/platform/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/platform/*" {' '  capabilities = ["read"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/apps" {' '  capabilities = ["list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/apps/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/apps/*" {' '  capabilities = ["read"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_SECRETS_OPERATOR_POLICY)" -
+	@printf '%s\n' 'path "$(VAULT_KV_MOUNT)/metadata/platform" {' '  capabilities = ["list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/platform/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/platform/*" {' '  capabilities = ["read"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_SECRETS_OPERATOR_POLICY)" -
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault write auth/"$(VAULT_KUBERNETES_AUTH_MOUNT)"/role/"$(VAULT_SECRETS_OPERATOR_ROLE)" bound_service_account_names="$(VAULT_SECRETS_OPERATOR_SERVICE_ACCOUNT)" bound_service_account_namespaces="$(VAULT_SECRETS_OPERATOR_NAMESPACE)" audience="$(VAULT_SECRETS_OPERATOR_AUDIENCE)" token_policies="$(VAULT_SECRETS_OPERATOR_POLICY)" token_ttl="1h"
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
+
+vault-app-namespace-bootstrap: ## Grant one app namespace access only to mbhome/apps/<namespace>
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$(VAULT_APP_NAMESPACE)" || (echo "Set VAULT_APP_NAMESPACE before running this target"; exit 1)
+	@echo "Enter a Vault token with enough privilege to configure app namespace policy and Kubernetes auth role."
+	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
+	-$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault auth enable -path="$(VAULT_KUBERNETES_AUTH_MOUNT)" kubernetes
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault write auth/"$(VAULT_KUBERNETES_AUTH_MOUNT)"/config kubernetes_host="https://kubernetes.default.svc:443"
+	@printf '%s\n' 'path "$(VAULT_KV_MOUNT)/metadata/apps/$(VAULT_APP_NAMESPACE)" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/apps/$(VAULT_APP_NAMESPACE)/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/apps/$(VAULT_APP_NAMESPACE)" {' '  capabilities = ["read"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/apps/$(VAULT_APP_NAMESPACE)/*" {' '  capabilities = ["read"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_APP_POLICY)" -
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault write auth/"$(VAULT_KUBERNETES_AUTH_MOUNT)"/role/"$(VAULT_APP_ROLE)" bound_service_account_names="$(VAULT_APP_SERVICE_ACCOUNT)" bound_service_account_namespaces="$(VAULT_APP_NAMESPACE)" audience="$(VAULT_SECRETS_OPERATOR_AUDIENCE)" token_policies="$(VAULT_APP_POLICY)" token_ttl="1h"
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 
 vault-secrets-operator-status: ## Show Vault Secrets Operator release, CRDs, pods, connection, and auth status
@@ -701,6 +716,8 @@ immichframe-status: ## Show ImmichFrame app, Vault sync, route, and endpoint sta
 	$(KUBECTL_ADMIN) -n immichframe get deploy,pods,svc,httproute
 	$(KUBECTL_ADMIN) -n immichframe get vaultstaticsecret immichframe || true
 	$(KUBECTL_ADMIN) -n immichframe get secret immichframe -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
+	@$(KUBECTL_ADMIN) -n immichframe get secret immichframe -o jsonpath='{range $$k,$$v := .data}{$$k}{"\n"}{end}' 2>/dev/null || true
+	$(KUBECTL_ADMIN) -n immichframe logs deploy/immichframe -c render-config --tail=50 || true
 	@curl -Ik https://immichframe.apps.mbhome.biz || true
 
 dex-postgres-secret: ## Create/update the Dex Postgres application owner secret from DEX_POSTGRES_PASSWORD
