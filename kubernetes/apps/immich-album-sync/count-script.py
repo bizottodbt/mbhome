@@ -79,7 +79,8 @@ def matching_assets(base_url, api_key, person_id):
         assets = result.get("assets", {})
         total = int(assets.get("total", total))
         asset_ids.extend(item["id"] for item in assets.get("items", []))
-        page = assets.get("nextPage")
+        next_page = assets.get("nextPage")
+        page = int(next_page) if next_page is not None else None
 
     return total, asset_ids
 

@@ -69,3 +69,6 @@ infrastructure/talos/clusters/*/kubeconfig
 .idea/
 .vscode/settings.json
 *.swp
+
+# Python
+__pycache__/

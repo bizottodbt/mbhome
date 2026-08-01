@@ -78,7 +78,8 @@ def matching_asset_ids(base_url, api_key, person_id):
         result = request_json("POST", base_url, "search/smart", api_key, payload)
         assets = result.get("assets", {})
         asset_ids.extend(item["id"] for item in assets.get("items", []))
-        page = assets.get("nextPage")
+        next_page = assets.get("nextPage")
+        page = int(next_page) if next_page is not None else None
 
     return asset_ids
 
