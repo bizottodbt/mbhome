@@ -1733,6 +1733,39 @@ before testing HTTPRoutes. This keeps the first Gateway internal-only; later
 externally reachable services can be added with Cloudflare Tunnel without
 changing the internal Gateway model.
 
+Cloudflare Tunnel is managed by Flux under:
+
+```text
+kubernetes/infrastructure/cloudflared/
+```
+
+Create a Cloudflare Tunnel in Zero Trust, copy its tunnel token, and store it in
+Kubernetes before reconciling the platform:
+
+```bash
+export CLOUDFLARED_TUNNEL_TOKEN='...'
+make cloudflared-token-secret
+make flux-reconcile
+make cloudflared-status
+```
+
+Do not publish a public wildcard for `*.apps.mbhome.biz`. Expose only selected
+apps in the Cloudflare Tunnel public hostname list. For example, to expose the
+whoami test app:
+
+```text
+Hostname: whoami.apps.mbhome.biz
+Service:  https://10.20.30.200
+HTTP Host Header: whoami.apps.mbhome.biz
+Origin Server Name: whoami.apps.mbhome.biz
+No TLS Verify: disabled
+```
+
+Add a matching Cloudflare Access self-hosted application for each public
+hostname unless the app is deliberately public. LAN clients continue to resolve
+the same FQDN directly through AD DNS; internet clients reach only the hostnames
+you add to the tunnel.
+
 cert-manager is managed by Flux under:
 
 ```text

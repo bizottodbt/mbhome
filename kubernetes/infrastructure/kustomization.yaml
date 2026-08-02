@@ -7,6 +7,7 @@ resources:
   - cert-manager
   - nfs-csi
   - gateway-api
+  - cloudflared
   - monitoring
   - metrics-server
   # - velero

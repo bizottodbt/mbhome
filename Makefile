@@ -93,6 +93,8 @@ VAULT_APP_NAMESPACE ?= immichframe
 VAULT_APP_SERVICE_ACCOUNT ?= vault-sync
 VAULT_APP_ROLE ?= app-$(VAULT_APP_NAMESPACE)
 VAULT_APP_POLICY ?= app-$(VAULT_APP_NAMESPACE)
+CLOUDFLARED_NAMESPACE ?= cloudflared
+CLOUDFLARED_TOKEN_SECRET ?= cloudflared-tunnel-token
 CILIUM_DIR := kubernetes/infrastructure/cilium
 CILIUM_VERSION ?= 1.19.5
 GATEWAY_API_VERSION ?= v1.4.1
@@ -106,7 +108,7 @@ FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudflared-token-secret cloudflared-required-secrets-check cloudflared-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -511,6 +513,22 @@ cert-manager-status: ## Show cert-manager pods, issuers, and wildcard certificat
 	$(KUBECTL_ADMIN) -n gateway-system get certificates.cert-manager.io,certificaterequests.cert-manager.io,orders.acme.cert-manager.io,challenges.acme.cert-manager.io || true
 	$(KUBECTL_ADMIN) -n gateway-system get secret apps-mbhome-biz-tls || true
 
+cloudflared-token-secret: ## Create/update the Cloudflare Tunnel token secret from CLOUDFLARED_TUNNEL_TOKEN
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$CLOUDFLARED_TUNNEL_TOKEN" || (echo "Set CLOUDFLARED_TUNNEL_TOKEN"; exit 1)
+	$(KUBECTL_ADMIN) create namespace "$(CLOUDFLARED_NAMESPACE)" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+	$(KUBECTL_ADMIN) -n "$(CLOUDFLARED_NAMESPACE)" create secret generic "$(CLOUDFLARED_TOKEN_SECRET)" --from-literal=token="$$CLOUDFLARED_TUNNEL_TOKEN" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+
+cloudflared-required-secrets-check: ## Confirm Cloudflare Tunnel token exists before Flux reconciles cloudflared
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@$(KUBECTL_ADMIN) -n "$(CLOUDFLARED_NAMESPACE)" get secret "$(CLOUDFLARED_TOKEN_SECRET)" >/dev/null || (echo "Missing $(CLOUDFLARED_NAMESPACE)/$(CLOUDFLARED_TOKEN_SECRET). Run: export CLOUDFLARED_TUNNEL_TOKEN='...' && make cloudflared-token-secret"; exit 1)
+
+cloudflared-status: ## Show Cloudflare Tunnel pods and recent logs
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	$(KUBECTL_ADMIN) -n "$(CLOUDFLARED_NAMESPACE)" get deploy,pods -l app.kubernetes.io/name=cloudflared -o wide
+	$(KUBECTL_ADMIN) -n "$(CLOUDFLARED_NAMESPACE)" get secret "$(CLOUDFLARED_TOKEN_SECRET)" -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
+	$(KUBECTL_ADMIN) -n "$(CLOUDFLARED_NAMESPACE)" logs deploy/cloudflared --tail=50 --prefix=true || true
+
 cloudnative-pg-status: ## Show CloudNativePG operator and CRD status
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	$(KUBECTL_ADMIN) -n flux-system get helmrelease cloudnative-pg
@@ -811,7 +829,7 @@ flux-tree: ## Show Flux-managed layers and applied revisions
 	@$(KUBECTL_ADMIN) get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
 		-o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,CHART:.spec.chart.spec.chart,TARGET:.spec.targetNamespace' || true
 
-flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
+flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check cloudflared-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	$(FLUX_ADMIN) reconcile source git flux-system --namespace flux-system
 	$(FLUX_ADMIN) reconcile kustomization infrastructure --namespace flux-system --with-source
