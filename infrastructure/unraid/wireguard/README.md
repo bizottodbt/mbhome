@@ -77,6 +77,18 @@ endpoint port that should be written into new peer configs:
 Endpoint = vpn.mbhome.biz:51028
 ```
 
+The Docker host port and container port intentionally use this same value. In
+wg-easy v15, the initialized WireGuard listen port is stored in the persisted
+database. If `docker compose exec wg-easy wg show` reports:
+
+```text
+listening port: 51888
+```
+
+then the compose stack, router port forward, and phone peer endpoint must all
+use UDP `51888`. A host-to-container mapping such as `51888:51820/udp` will not
+work if WireGuard inside the container is listening on `51888`.
+
 For wg-easy v15, the setup values are persisted in a SQLite database under
 `./wireguard/` after the first setup. `WG_EASY_INIT_ENABLED=false` does not skip
 initialization; it only disables unattended initialization and makes wg-easy use
@@ -287,6 +299,9 @@ docker compose exec wg-easy wg show
 docker compose exec wg-easy sh -c 'ip route get 8.8.8.8'
 docker compose exec wg-easy sh -c 'iptables -t nat -S | grep -E "MASQUERADE|POSTROUTING"'
 ```
+
+The `listening port` in `wg show` is the real UDP port that must be published by
+Docker, forwarded by the router, and configured in the phone peer endpoint.
 
 If the phone has a recent handshake but byte counters only increase in one
 direction, check the peer AllowedIPs, `WG_DEVICE`, Unraid firewall settings, and

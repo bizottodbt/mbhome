@@ -47,7 +47,7 @@ services:
       - ./wireguard:/etc/wireguard
       - /lib/modules:/lib/modules:ro
     ports:
-      - "${WIREGUARD_BIND_IP:-0.0.0.0}:${WIREGUARD_PORT:-51028}:51820/udp"
+      - "${WIREGUARD_BIND_IP:-0.0.0.0}:${WIREGUARD_PORT:-51028}:${WIREGUARD_PORT:-51028}/udp"
       - "${WG_EASY_UI_BIND_IP:-10.20.30.50}:${WG_EASY_UI_PORT:-51128}:51821/tcp"
     restart: unless-stopped
     cap_add:
