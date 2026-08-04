@@ -61,6 +61,8 @@ WIREGUARD_PORT=51028
 DDNS_DOMAINS=vpn.mbhome.biz
 WG_TUNNEL_IPV4_CIDR=10.29.0.0/24
 WG_DEFAULT_DNS=10.20.30.11,10.20.30.12,10.20.30.1
+WG_ALLOWED_IPS=10.20.30.0/24
+WG_DEVICE=eth0
 WG_EASY_UI_BIND_IP=10.20.30.50
 WG_EASY_UI_PORT=51128
 WG_EASY_INIT_ENABLED=true
@@ -86,6 +88,14 @@ After `./wireguard/` contains an initialized wg-easy v15 database, changing
 generated as `vpn.mbhome.biz:51820`, update the host/port in the wg-easy admin
 UI, then recreate or edit that peer. To re-run unattended setup from scratch,
 stop the stack and move `./wireguard/` out of the way first.
+
+`WG_DEVICE` is the egress interface from inside the wg-easy container. With this
+compose file it should normally be `eth0`, not Unraid's host bridge `br0`.
+Verify it from Unraid with:
+
+```bash
+docker compose exec wg-easy sh -c 'ip route get 8.8.8.8 | awk "{print \$5}"'
+```
 
 Start the service:
 
@@ -218,6 +228,16 @@ If you want full-tunnel VPN later, use:
 0.0.0.0/0
 ```
 
+If a full-tunnel client connects but cannot reach the internet, try this
+equivalent pair instead:
+
+```text
+0.0.0.0/1,128.0.0.0/1
+```
+
+Some wg-easy/Docker combinations have behaved better with the split default
+route pair than with a literal `0.0.0.0/0`.
+
 ## DNS
 
 Set VPN clients to use the AD DNS servers so internal names resolve:
@@ -233,6 +253,20 @@ third fallback DNS server:
 WG_DEFAULT_DNS=10.20.30.11,10.20.30.12,10.20.30.1
 ```
 
+For split-tunnel clients, make sure the DNS servers are included in the peer's
+AllowedIPs. With the recommended `10.20.30.0/24`, the AD DNS servers
+`10.20.30.11` and `10.20.30.12` are reachable through the tunnel.
+
+If the phone connects but websites do not load, temporarily set the peer DNS to:
+
+```text
+1.1.1.1
+```
+
+If public websites start working, the tunnel itself is fine and the issue is DNS
+reachability or AD DNS forwarding. Switch DNS back to the DCs after fixing that,
+otherwise internal `mbhome.biz` names will not resolve.
+
 ## Validation
 
 From a VPN client:
@@ -245,6 +279,18 @@ curl -k https://k8s-api.mbhome.biz:6443/readyz
 
 `/readyz` should return `Unauthorized` from Kubernetes when connectivity is
 working but no Kubernetes credentials are supplied.
+
+From Unraid, confirm the peer is handshaking and traffic counters increase:
+
+```bash
+docker compose exec wg-easy wg show
+docker compose exec wg-easy sh -c 'ip route get 8.8.8.8'
+docker compose exec wg-easy sh -c 'iptables -t nat -S | grep -E "MASQUERADE|POSTROUTING"'
+```
+
+If the phone has a recent handshake but byte counters only increase in one
+direction, check the peer AllowedIPs, `WG_DEVICE`, Unraid firewall settings, and
+router forwarding.
 
 ## Notes
 
