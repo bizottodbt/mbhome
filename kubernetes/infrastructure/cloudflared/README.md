@@ -80,6 +80,37 @@ That preserves the original hostname so Cilium Gateway can match the HTTPRoute,
 and keeps TLS verification enabled against the wildcard certificate issued by
 cert-manager.
 
+Use the Gateway IP as the origin service instead of the public DNS name. If the
+origin service is set to `https://whoami.apps.mbhome.biz`, `cloudflared` may
+resolve the public Cloudflare DNS record and loop back into the tunnel.
+
+For each Kubernetes app, the Cloudflare public hostname should map to:
+
+```text
+Service:            https://10.20.30.200
+HTTP Host Header:   <app>.apps.mbhome.biz
+Origin Server Name: <app>.apps.mbhome.biz
+No TLS Verify:      disabled
+```
+
+If the app fails externally but works internally, check these in order:
+
+```bash
+make cloudflared-status
+make gateway-api-status
+curl -Ik https://<app>.apps.mbhome.biz
+```
+
+Common causes:
+
+- `404` from Envoy: Cloudflare is not sending the app hostname as the Host
+  header, or the app has no matching `HTTPRoute`.
+- TLS/certificate errors in `cloudflared` logs: set `Origin Server Name` to the
+  app FQDN, or use `Match SNI to Host` for per-hostname routes.
+- Cloudflare error `1033`: the tunnel has no healthy `cloudflared` connector.
+- Cloudflare error `502`: `cloudflared` can reach Cloudflare but cannot reach
+  or verify the Kubernetes Gateway origin.
+
 ## Access Policy
 
 For every public hostname, create a matching Cloudflare Access self-hosted

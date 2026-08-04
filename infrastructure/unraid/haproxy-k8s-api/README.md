@@ -282,6 +282,7 @@ The HTTPS frontend also routes management UIs by hostname:
 
 ```text
 https://nas.mbhome.biz
+https://ha.mbhome.biz
 https://proxmox.mbhome.biz
 https://mbhome-nas-01-bmc.mbhome.biz
 https://mbhome-proxmox-01-bmc.mbhome.biz
@@ -300,6 +301,70 @@ BMC web UIs are proxied individually. Basic web access should work, but remote
 console, virtual media, and firmware workflows may still need direct BMC access
 because many BMCs use vendor-specific websocket, Java, media, or TLS behavior.
 
+## Cloudflare Tunnel Origins
+
+For Kubernetes apps, do not point Cloudflare Tunnel at HAProxy. Point each
+published hostname directly at the Cilium Gateway IP and preserve the app
+hostname:
+
+```text
+Public hostname: whoami.apps.mbhome.biz
+Service:         https://10.20.30.200
+HTTP Host Header: whoami.apps.mbhome.biz
+Origin Server Name: whoami.apps.mbhome.biz
+No TLS Verify: disabled
+```
+
+Using the Gateway IP avoids public DNS loops and keeps routing simple. The Host
+header lets Cilium match the app's `HTTPRoute`, while the origin server name
+lets `cloudflared` verify the `*.apps.mbhome.biz` certificate.
+
+For Home Assistant, publish the HAProxy hostname instead:
+
+```text
+Public hostname: ha.mbhome.biz
+Service:         https://10.20.30.50
+HTTP Host Header: ha.mbhome.biz
+Origin Server Name: ha.mbhome.biz
+No TLS Verify: disabled
+```
+
+HAProxy terminates HTTPS and forwards Home Assistant over HTTP to the VM. The
+frontend sets `X-Forwarded-Proto`, `X-Forwarded-Port`, `X-Forwarded-Host`, and
+`X-Forwarded-For`. It also sets `X-Real-IP` and keeps websocket tunnels open
+longer than ordinary HTTP requests.
+
+Home Assistant must trust the immediate proxy. Add this to Home Assistant's
+`configuration.yaml`, adjusting the proxy IP if HAProxy does not live on
+`10.20.30.50`:
+
+```yaml
+homeassistant:
+  internal_url: "http://10.20.30.18:8130"
+  external_url: "https://ha.mbhome.biz"
+
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 10.20.30.50
+```
+
+Restart Home Assistant after changing this file.
+
+After changing this repository copy of `haproxy.cfg`, sync the file to the
+Unraid appdata directory where this compose bundle runs, validate it there, and
+restart HAProxy:
+
+```bash
+docker compose exec haproxy haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+docker compose restart haproxy
+```
+
+For token-based Cloudflare Tunnels, the public hostname, `HTTP Host Header`, and
+`Origin Server Name` settings are configured in the Cloudflare Zero Trust
+dashboard. They are not stored in this repository unless the tunnel is converted
+to a locally managed `cloudflared` config.
+
 ## Verification
 
 From your workstation:
@@ -312,6 +377,7 @@ curl -Ik https://s3-ui.mbhome.biz
 curl -Ik https://s3-backup.mbhome.biz/minio/health/live
 curl -Ik https://s3-backup-ui.mbhome.biz
 curl -Ik https://nas.mbhome.biz
+curl -Ik https://ha.mbhome.biz
 curl -Ik https://proxmox.mbhome.biz
 curl -Ik https://mbhome-proxmox-01-bmc.mbhome.biz
 ```
