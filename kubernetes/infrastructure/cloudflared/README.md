@@ -61,10 +61,19 @@ spec:
           port: 80
 ```
 
-In Cloudflare Tunnel, add a public hostname:
+In Cloudflare Tunnel, add a public hostname.
+
+Cloudflare Universal SSL on a normal full-zone setup covers the apex and
+first-level hostnames, such as `whoami.mbhome.biz`. It does not cover deeper
+hostnames such as `whoami.apps.mbhome.biz` unless you enable Total TLS, purchase
+Advanced Certificate Manager, or upload a custom edge certificate for
+`*.apps.mbhome.biz`.
+
+For the simplest no-extra-cost external test, use a first-level public hostname
+but keep the origin Host/SNI set to the existing Kubernetes route hostname:
 
 ```text
-Hostname: whoami.apps.mbhome.biz
+Hostname: whoami.mbhome.biz
 Service:  https://10.20.30.200
 ```
 
@@ -77,14 +86,21 @@ No TLS Verify: disabled
 ```
 
 That preserves the original hostname so Cilium Gateway can match the HTTPRoute,
-and keeps TLS verification enabled against the wildcard certificate issued by
-cert-manager.
+and keeps TLS verification enabled against the certificate issued by
+cert-manager. This makes the public URL `whoami.mbhome.biz`, while the app sees
+the existing internal route host `whoami.apps.mbhome.biz`.
+
+If you want the app to see the same first-level FQDN inside and outside the LAN,
+add that hostname to the Kubernetes Gateway listener/certificate and the app
+`HTTPRoute`, then set the Cloudflare `HTTP Host Header` and `Origin Server Name`
+to the same first-level FQDN.
 
 Use the Gateway IP as the origin service instead of the public DNS name. If the
 origin service is set to `https://whoami.apps.mbhome.biz`, `cloudflared` may
 resolve the public Cloudflare DNS record and loop back into the tunnel.
 
-For each Kubernetes app, the Cloudflare public hostname should map to:
+For each Kubernetes app using a first-level public hostname without changing
+Kubernetes routes, the Cloudflare public hostname should map to:
 
 ```text
 Service:            https://10.20.30.200
@@ -92,6 +108,9 @@ HTTP Host Header:   <app>.apps.mbhome.biz
 Origin Server Name: <app>.apps.mbhome.biz
 No TLS Verify:      disabled
 ```
+
+If you intentionally use `*.apps.mbhome.biz` externally, keep the same settings
+but make sure Cloudflare has an edge certificate for `*.apps.mbhome.biz` first.
 
 If the app fails externally but works internally, check these in order:
 
@@ -105,6 +124,8 @@ Common causes:
 
 - `404` from Envoy: Cloudflare is not sending the app hostname as the Host
   header, or the app has no matching `HTTPRoute`.
+- TLS handshake failure from Cloudflare before any tunnel log appears:
+  Cloudflare's edge certificate does not cover the public hostname.
 - TLS/certificate errors in `cloudflared` logs: set `Origin Server Name` to the
   app FQDN, or use `Match SNI to Host` for per-hostname routes.
 - Cloudflare error `1033`: the tunnel has no healthy `cloudflared` connector.

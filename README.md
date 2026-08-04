@@ -1750,11 +1750,21 @@ make cloudflared-status
 ```
 
 Do not publish a public wildcard for `*.apps.mbhome.biz`. Expose only selected
-apps in the Cloudflare Tunnel public hostname list. For example, to expose the
-whoami test app:
+apps in the Cloudflare Tunnel public hostname list.
+
+Cloudflare Universal SSL on a normal full-zone setup covers `mbhome.biz` and
+first-level names such as `whoami.mbhome.biz`, but not deeper names such as
+`whoami.apps.mbhome.biz`. To expose `*.apps.mbhome.biz` publicly, enable
+Cloudflare Total TLS, purchase Advanced Certificate Manager, or upload a custom
+edge certificate that covers `*.apps.mbhome.biz`.
+
+Without that Cloudflare edge certificate, use a first-level public hostname for
+external access. For a quick test with the existing Kubernetes Gateway and
+HTTPRoute unchanged, expose whoami externally as `whoami.mbhome.biz` while
+still forwarding to the internal Kubernetes hostname:
 
 ```text
-Hostname: whoami.apps.mbhome.biz
+Hostname: whoami.mbhome.biz
 Service:  https://10.20.30.200
 HTTP Host Header: whoami.apps.mbhome.biz
 Origin Server Name: whoami.apps.mbhome.biz
@@ -1762,9 +1772,10 @@ No TLS Verify: disabled
 ```
 
 Add a matching Cloudflare Access self-hosted application for each public
-hostname unless the app is deliberately public. LAN clients continue to resolve
-the same FQDN directly through AD DNS; internet clients reach only the hostnames
-you add to the tunnel.
+hostname unless the app is deliberately public. If you use first-level public
+names and want the app to see the same FQDN internally and externally, also add
+those first-level hostnames to the Kubernetes Gateway/certificate/`HTTPRoute`
+and internal AD DNS.
 
 cert-manager is managed by Flux under:
 
