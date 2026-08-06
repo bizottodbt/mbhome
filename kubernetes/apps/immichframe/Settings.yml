@@ -31,7 +31,7 @@ Accounts:
     ShowMemories: false
     ShowFavorites: false
     ShowArchived: false
-    ShowVideos: true
+    ShowVideos: false
     # Limit the frame to specific Immich albums by UUID.
     # You can get the UUID from an Immich album URL, for example:
     # https://immich.example.com/albums/85c85b29-c95d-4a8b-90f7-c87da1d518ba
