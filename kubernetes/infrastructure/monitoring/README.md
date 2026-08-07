@@ -48,6 +48,8 @@ k8s-viewers     -> Viewer
 
 Users outside those groups can authenticate at Dex but Grafana will reject them.
 The local Grafana admin login remains enabled as a break-glass path.
+Grafana requests `offline_access` and has refresh-token support enabled, so
+active Grafana sessions follow the Dex refresh-token lifetime.
 
 Then reconcile and check status:
 
