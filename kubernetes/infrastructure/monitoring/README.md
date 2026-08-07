@@ -56,6 +56,42 @@ make flux-reconcile
 make monitoring-status
 ```
 
+## Cilium Network Policies
+
+The monitoring namespace has Cilium ingress policies for:
+
+- Grafana
+- Prometheus
+- Alertmanager
+- kube-state-metrics
+
+These policies keep the monitoring UIs reachable through the internal Cilium
+Gateway while blocking unrelated direct pod-to-pod ingress into those workloads.
+They also allow the expected internal monitoring paths:
+
+- Grafana can query Prometheus.
+- Prometheus can scrape itself and kube-state-metrics.
+- Prometheus can send alerts to Alertmanager.
+- Alertmanager can use its peer and metrics ports.
+- Node-origin traffic is allowed for health checks and operational probes.
+
+Prometheus egress is intentionally not restricted yet. Prometheus is designed
+to scrape targets across namespaces and node endpoints, so locking down egress
+should be done after observing real traffic with Hubble and adding explicit
+allow rules for each scrape path.
+
+Useful checks after policy changes:
+
+```bash
+kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
+  --context admin@mbhome \
+  -n monitoring get ciliumnetworkpolicies.cilium.io
+
+curl -ksS https://grafana.apps.mbhome.biz/api/health
+curl -ksS https://prometheus.apps.mbhome.biz/-/ready
+curl -ksS https://alertmanager.apps.mbhome.biz/-/ready
+```
+
 Prometheus stores 15 days of data with a 20GB retention size on `nfs-cache`.
 Grafana uses a 5Gi PVC and Alertmanager uses a 2Gi PVC.
 
