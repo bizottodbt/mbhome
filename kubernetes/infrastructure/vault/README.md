@@ -184,7 +184,8 @@ the expected paths:
 - Cilium Gateway egress to `10.20.30.200/32` and the
   `gateway-system/cilium-gateway-internal` service on port `443` for internal
   calls to public OIDC URLs. This is L4-only because those calls are HTTPS.
-- Dex egress to `dex.apps.mbhome.biz:443` for OIDC discovery and token exchange.
+- OIDC discovery and token exchange go through the internal Gateway address,
+  not a separate FQDN policy rule.
 
 The policy is intentionally attached to Vault server pods instead of the whole
 namespace, so future Helm hooks or maintenance jobs are not blocked until their
