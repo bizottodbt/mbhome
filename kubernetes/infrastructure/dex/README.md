@@ -30,6 +30,20 @@ The AD connector uses LDAPS on port `636`. It currently skips certificate
 verification while the DCs use lab self-signed LDAPS certificates; replace that
 with `rootCAData` after AD CS issues trusted DC certificates.
 
+## Cilium Network Policy
+
+Dex has a workload-scoped Cilium policy that allows only the expected paths:
+
+- Gateway ingress to Dex HTTP on port `5556`.
+- Node-origin health probes to Dex HTTP/telemetry ports `5556` and `5558`.
+- DNS egress to CoreDNS.
+- LDAPS egress to `mbhome.biz:636` for AD authentication.
+- PostgreSQL egress to the `dex-postgres` CloudNativePG pods on port `5432`.
+
+Dex telemetry on `5558` is not exposed through the Gateway. If Prometheus
+scraping is enabled for Dex later, allow Prometheus ingress to `5558` before
+turning on the scrape.
+
 Token lifetimes are set explicitly:
 
 ```text

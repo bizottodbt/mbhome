@@ -1,0 +1,56 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dex
+  namespace: dex
+  labels:
+    app.kubernetes.io/name: dex
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dex
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "5556"
+              protocol: TCP
+    - fromEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "5556"
+              protocol: TCP
+            - port: "5558"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: mbhome.biz
+      toPorts:
+        - ports:
+            - port: "636"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: dex
+            k8s:cnpg.io/cluster: dex-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
