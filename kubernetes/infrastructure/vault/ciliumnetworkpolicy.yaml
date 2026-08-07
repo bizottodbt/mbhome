@@ -73,6 +73,12 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    - toEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
     - toEndpoints:
         - matchLabels:
             app.kubernetes.io/name: vault
