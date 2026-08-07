@@ -79,6 +79,14 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    - toServices:
+        - k8sService:
+            namespace: gateway-system
+            serviceName: cilium-gateway-internal
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
     - toEndpoints:
         - matchLabels:
             app.kubernetes.io/name: vault
