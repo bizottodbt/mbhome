@@ -136,6 +136,11 @@ https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
 http://localhost:8250/oidc/callback
 ```
 
+The Make target writes those callbacks as one comma-separated
+`allowed_redirect_uris` value. If the Vault UI shows `Missing auth_url`, rerun
+`make vault-oidc-bootstrap`; that usually means the OIDC role is missing the UI
+callback URL.
+
 AD groups are mapped through Dex group claims:
 
 ```text

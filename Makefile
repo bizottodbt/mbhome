@@ -78,6 +78,7 @@ VAULT_OIDC_CLIENT_ID ?= vault
 VAULT_OIDC_DEFAULT_ROLE ?= default
 VAULT_OIDC_UI_REDIRECT_URI ?= https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
 VAULT_OIDC_CLI_REDIRECT_URI ?= http://localhost:8250/oidc/callback
+VAULT_OIDC_ALLOWED_REDIRECT_URIS ?= $(VAULT_OIDC_UI_REDIRECT_URI),$(VAULT_OIDC_CLI_REDIRECT_URI)
 VAULT_ADMIN_GROUP ?= vault-admins
 VAULT_USER_GROUP ?= vault-users
 VAULT_READER_GROUP ?= vault-readers
@@ -668,7 +669,7 @@ vault-oidc-bootstrap: ## Interactively configure Vault OIDC auth against Dex
 	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'vault auth list -format=json | grep -q "\"oidc/\"" && echo "OIDC auth method already enabled" || vault auth enable oidc'
 	@printf '%s\n' "$$VAULT_OIDC_CLIENT_SECRET" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r client_secret; vault write auth/oidc/config oidc_discovery_url="$(VAULT_OIDC_ISSUER_URL)" oidc_client_id="$(VAULT_OIDC_CLIENT_ID)" oidc_client_secret="$$client_secret" default_role="$(VAULT_OIDC_DEFAULT_ROLE)"'
-	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault write auth/oidc/role/"$(VAULT_OIDC_DEFAULT_ROLE)" role_type="oidc" user_claim="email" groups_claim="groups" oidc_scopes="openid,email,profile,groups" allowed_redirect_uris="$(VAULT_OIDC_UI_REDIRECT_URI)" allowed_redirect_uris="$(VAULT_OIDC_CLI_REDIRECT_URI)" token_policies="default" ttl="1h" max_ttl="8h"
+	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- vault write auth/oidc/role/"$(VAULT_OIDC_DEFAULT_ROLE)" role_type="oidc" user_claim="email" groups_claim="groups" oidc_scopes="openid,email,profile,groups" allowed_redirect_uris="$(VAULT_OIDC_ALLOWED_REDIRECT_URIS)" token_policies="default" ttl="1h" max_ttl="8h"
 	@printf '%s\n' 'path "*" {' '  capabilities = ["create", "read", "update", "delete", "list", "sudo"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_ADMIN_POLICY)" -
 	@printf '%s\n' 'path "sys/mounts" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata" {' '  capabilities = ["list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/*" {' '  capabilities = ["create", "read", "update", "delete"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_USER_POLICY)" -
 	@printf '%s\n' 'path "sys/mounts" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata" {' '  capabilities = ["list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/metadata/*" {' '  capabilities = ["read", "list"]' '}' '' 'path "$(VAULT_KV_MOUNT)/data/*" {' '  capabilities = ["read"]' '}' | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- vault policy write "$(VAULT_READER_POLICY)" -

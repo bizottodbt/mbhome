@@ -36,6 +36,8 @@ Dex has a workload-scoped Cilium policy that allows only the expected paths:
 
 - Gateway ingress to Dex HTTP on port `5556`.
 - Node-origin health probes to Dex HTTP/telemetry ports `5556` and `5558`.
+- Vault server ingress to Dex HTTP on port `5556` for OIDC discovery and token
+  exchange.
 - DNS egress to CoreDNS.
 - LDAPS egress to `mbhome.biz:636` for AD authentication.
 - PostgreSQL egress to the `dex-postgres` CloudNativePG pods on port `5432`.

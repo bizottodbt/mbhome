@@ -26,6 +26,15 @@ spec:
               protocol: TCP
             - port: "5558"
               protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: vault
+            app.kubernetes.io/name: vault
+            component: server
+      toPorts:
+        - ports:
+            - port: "5556"
+              protocol: TCP
   egress:
     - toEndpoints:
         - matchLabels:
