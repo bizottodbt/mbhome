@@ -63,13 +63,19 @@ spec:
       oauth2:
         skipApprovalScreen: true
       expiry:
+        # ID tokens stay short-lived; kubectl oidc-login refreshes them by
+        # using the offline_access refresh token cached on the client.
         signingKeys: 24h
         idTokens: 1h
         authRequests: 10m
         deviceRequests: 5m
         refreshTokens:
-          validIfNotUsedFor: 168h
-          absoluteLifetime: 720h
+          # Idle lifetime: users must run kubectl at least this often to keep
+          # the cached refresh session alive.
+          validIfNotUsedFor: 720h
+          # Maximum lifetime: users must complete a browser login again after
+          # this, even if they used kubectl regularly.
+          absoluteLifetime: 2160h
           reuseInterval: 3s
           disableRotation: false
       staticClients:

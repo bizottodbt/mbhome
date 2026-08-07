@@ -48,13 +48,18 @@ Token lifetimes are set explicitly:
 
 ```text
 ID token: 1 hour
-Refresh token idle lifetime: 7 days
-Refresh token absolute lifetime: 30 days
+Refresh token idle lifetime: 30 days
+Refresh token absolute lifetime: 90 days
 ```
 
 Refresh sessions and signing keys are stored in Postgres, so restarting Dex pods
 does not wipe OIDC state. If the database is rebuilt from scratch, existing
 refresh sessions and signing keys are lost and users must log in again.
+
+The Kubernetes OIDC kubeconfig requests the `offline_access` scope, which lets
+`kubectl oidc-login` cache a refresh token locally and renew short-lived ID
+tokens without opening Dex every few hours. Adjust the CLI session lifetime in
+`helmrelease.yaml` under `config.expiry.refreshTokens`.
 
 Create the LDAP bind secret before Flux reconciles the identity layer:
 

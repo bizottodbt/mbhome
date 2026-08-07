@@ -2101,6 +2101,11 @@ cached. The committed OIDC kubeconfig uses `--skip-open-browser`, so the plugin
 prints the localhost callback URL instead of opening browser tabs automatically.
 That callback then redirects to Dex.
 
+The OIDC kubeconfig requests `offline_access`, so `kubectl oidc-login` stores a
+refresh token locally and renews short-lived ID tokens without a browser login
+until the Dex refresh-token lifetime expires. The current Dex defaults are a
+30-day idle lifetime and a 90-day absolute lifetime.
+
 Or merge the OIDC context into the default kubeconfig and select it:
 
 ```bash

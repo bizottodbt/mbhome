@@ -58,6 +58,7 @@ KUBERNETES_DEFAULT_KUBECONFIG ?= $(HOME)/.kube/config
 KUBERNETES_OIDC_USER ?= oidc
 KUBERNETES_OIDC_ISSUER_URL ?= https://dex.apps.mbhome.biz
 KUBERNETES_OIDC_CLIENT_ID ?= kubernetes
+KUBERNETES_OIDC_EXTRA_SCOPES ?= email groups profile offline_access
 DEX_POSTGRES_USER ?= dex
 GRAFANA_ADMIN_USER ?= admin
 VELERO_NAMESPACE ?= velero
@@ -341,6 +342,10 @@ dex-generate-oidc-kubeconfig: ## Regenerate the committed credential-free OIDC k
 	if [ -z "$$server" ]; then echo "Could not find cluster server from context $(KUBERNETES_OIDC_ADMIN_CONTEXT) in $(KUBECONFIG_FILE)"; exit 1; fi; \
 	if [ -z "$$ca" ]; then echo "Could not find cluster certificate-authority-data from context $(KUBERNETES_OIDC_ADMIN_CONTEXT) in $(KUBECONFIG_FILE)"; exit 1; fi; \
 	tmpfile=$$(mktemp); \
+	scope_args=""; \
+	for scope in $(KUBERNETES_OIDC_EXTRA_SCOPES); do \
+		scope_args="$$scope_args --exec-arg=--oidc-extra-scope=$$scope"; \
+	done; \
 	kubectl --kubeconfig "$$tmpfile" config set-cluster "$$cluster" --server="$$server" >/dev/null; \
 	kubectl --kubeconfig "$$tmpfile" config set "clusters.$$cluster.certificate-authority-data" "$$ca" >/dev/null; \
 	kubectl --kubeconfig "$$tmpfile" config set-credentials "$(KUBERNETES_OIDC_USER)" \
@@ -352,9 +357,7 @@ dex-generate-oidc-kubeconfig: ## Regenerate the committed credential-free OIDC k
 		--exec-arg=--oidc-issuer-url="$(KUBERNETES_OIDC_ISSUER_URL)" \
 		--exec-arg=--oidc-client-id="$(KUBERNETES_OIDC_CLIENT_ID)" \
 		--exec-arg=--skip-open-browser \
-		--exec-arg=--oidc-extra-scope=email \
-		--exec-arg=--oidc-extra-scope=groups \
-		--exec-arg=--oidc-extra-scope=profile >/dev/null; \
+		$$scope_args >/dev/null; \
 	kubectl --kubeconfig "$$tmpfile" config set-context "$(KUBERNETES_OIDC_CONTEXT)" --cluster="$$cluster" --user="$(KUBERNETES_OIDC_USER)" >/dev/null; \
 	kubectl --kubeconfig "$$tmpfile" config use-context "$(KUBERNETES_OIDC_CONTEXT)" >/dev/null; \
 	mkdir -p "$$(dirname "$(KUBERNETES_OIDC_TEMPLATE)")"; \
