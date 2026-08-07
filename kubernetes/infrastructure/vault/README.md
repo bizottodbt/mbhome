@@ -181,7 +181,8 @@ the expected paths:
 - DNS egress to CoreDNS.
 - Kubernetes API egress for service registration and Kubernetes auth token
   review.
-- Cilium Gateway egress on port `443` for internal calls to public OIDC URLs.
+- Cilium Gateway egress to `10.20.30.200/32` on port `443` for internal calls
+  to public OIDC URLs.
 - Dex egress to `dex.apps.mbhome.biz:443` for OIDC discovery and token exchange.
 
 The policy is intentionally attached to Vault server pods instead of the whole

@@ -73,8 +73,8 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    - toEntities:
-        - ingress
+    - toCIDRSet:
+        - cidr: 10.20.30.200/32
       toPorts:
         - ports:
             - port: "443"
