@@ -162,3 +162,22 @@ the Vault server service account TokenReview access through
 make vault-secrets-operator-bootstrap
 make vault-secrets-operator-status
 ```
+
+## Cilium Network Policy
+
+Vault has a workload-scoped Cilium policy for the server pods. It allows only
+the expected paths:
+
+- Gateway ingress to the active Vault API/UI on port `8200`.
+- Node-origin health and operational probes to ports `8200` and `8201`.
+- Vault server-to-server Raft and HA traffic on ports `8200` and `8201`.
+- Prometheus scraping of Vault metrics on port `8200`.
+- Vault Secrets Operator access to the Vault API on port `8200`.
+- DNS egress to CoreDNS.
+- Kubernetes API egress for service registration and Kubernetes auth token
+  review.
+- Dex egress to `dex.apps.mbhome.biz:443` for OIDC discovery and token exchange.
+
+The policy is intentionally attached to Vault server pods instead of the whole
+namespace, so future Helm hooks or maintenance jobs are not blocked until their
+traffic is understood.
