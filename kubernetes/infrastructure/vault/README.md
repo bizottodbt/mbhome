@@ -183,7 +183,7 @@ the expected paths:
   review.
 - Cilium Gateway egress to `10.20.30.200/32` and the
   `gateway-system/cilium-gateway-internal` service on port `443` for internal
-  calls to public OIDC URLs.
+  `GET`, `HEAD`, and `POST` calls to public OIDC URLs.
 - Dex egress to `dex.apps.mbhome.biz:443` for OIDC discovery and token exchange.
 
 The policy is intentionally attached to Vault server pods instead of the whole

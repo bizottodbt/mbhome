@@ -79,6 +79,14 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: ".*"
+              - method: "HEAD"
+                path: ".*"
+              - method: "POST"
+                path: ".*"
     - toServices:
         - k8sService:
             namespace: gateway-system
@@ -87,6 +95,14 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: ".*"
+              - method: "HEAD"
+                path: ".*"
+              - method: "POST"
+                path: ".*"
     - toEndpoints:
         - matchLabels:
             app.kubernetes.io/name: vault
