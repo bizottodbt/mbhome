@@ -17,7 +17,11 @@ The CloudNativePG operator has a workload-scoped Cilium policy:
 - The operator can reach CoreDNS and the Kubernetes API on `443` and Talos
   control-plane port `6443`.
 - The operator can reach CloudNativePG-managed PostgreSQL instance pods on
-  `5432` for database reconciliation.
+  `5432` for database reconciliation and `8000` for the instance manager status
+  API, including `/pg/status`.
+
+If a database cluster reports `Instance Status Extraction Error` with a timeout
+to `https://<pod-ip>:8000/pg/status`, verify that this policy has been applied.
 
 Application clients need their own namespace policies for database access. This
 policy only covers the operator in `cnpg-system`.
