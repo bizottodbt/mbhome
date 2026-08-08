@@ -1684,6 +1684,34 @@ Force a sync after pushing changes:
 make flux-reconcile
 ```
 
+Flux itself is protected by Cilium network policies in:
+
+```text
+kubernetes/clusters/mbhome/flux-system-networkpolicy.yaml
+```
+
+When adding a new third-party `HelmRepository`, add its hostname to the
+`source-controller` HTTPS egress allowlist in that file. For example, this
+repository:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+spec:
+  url: https://charts.example.com
+```
+
+requires:
+
+```yaml
+- matchName: charts.example.com
+```
+
+No policy change is needed for a new `HelmRelease` that uses an already allowed
+`HelmRepository`. If a chart repository redirects or downloads assets from
+another hostname, add that hostname too; Hubble will show the denied destination
+when one is missing.
+
 ### Flux-managed platform components
 
 NFS CSI is managed here:

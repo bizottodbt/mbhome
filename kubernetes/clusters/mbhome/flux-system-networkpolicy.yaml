@@ -75,6 +75,7 @@ spec:
             - port: "22"
               protocol: TCP
     - toFQDNs:
+        # A helm repository should be added here to allow access
         - matchName: github.com
         - matchName: api.github.com
         - matchPattern: "*.githubusercontent.com"
