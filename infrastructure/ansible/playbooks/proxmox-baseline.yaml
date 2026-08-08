@@ -365,6 +365,7 @@
               'iperf3',
               'ipmitool',
               'nano',
+              'needrestart',
               'netcat-openbsd',
               'nfs-common',
               'screen',

@@ -148,6 +148,33 @@ changes can be resolved correctly.
 If the update includes a kernel, Proxmox, QEMU, systemd, firmware, or network
 package, plan a reboot.
 
+To check whether the host is likely running an older kernel than the newest
+installed kernel:
+
+```bash
+running_kernel="$(uname -r)"
+newest_kernel="$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's|/boot/vmlinuz-||' | sort -V | tail -1)"
+printf 'running kernel:  %s\nnewest kernel:   %s\n' "$running_kernel" "$newest_kernel"
+test "$running_kernel" = "$newest_kernel" && echo "kernel reboot not required" || echo "reboot required for newest kernel"
+```
+
+Also check whether deleted libraries or binaries are still held open by running
+processes:
+
+```bash
+sudo lsof +L1
+```
+
+If `needrestart` is installed, it gives a clearer summary:
+
+```bash
+sudo needrestart
+```
+
+When in doubt after Proxmox or kernel package updates, reboot the node after
+guests have been migrated away. A clean planned reboot is usually safer than
+leaving a hypervisor half-updated.
+
 ### 4. Reboot One Host
 
 ```bash
