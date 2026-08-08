@@ -25,8 +25,10 @@ cert-manager has separate workload-scoped Cilium policies:
   Talos control-plane port `6443`, Cloudflare API on `443`, Let's Encrypt ACME
   APIs on `443`, and the configured recursive DNS resolvers `1.1.1.1` and
   `8.8.8.8` on port `53`.
-- `cert-manager-webhook` accepts Kubernetes API admission traffic on `10250`
-  and node-origin health probes on `6080`.
+- `cert-manager-webhook` accepts Kubernetes API admission traffic on `10250`.
+  On Talos/Cilium this traffic can be classified as `kube-apiserver`, `host`,
+  or `remote-node`, so all three are allowed on the webhook port.
+- `cert-manager-webhook` accepts node-origin health probes on `6080`.
 - `cert-manager-webhook` and `cert-manager-cainjector` can reach CoreDNS and
   the Kubernetes API only.
 
