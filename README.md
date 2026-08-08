@@ -12,6 +12,12 @@ vars, BMC access, user passwords, and state files in git-ignored local files.
 
 ---
 
+## Operations Runbooks
+
+- [Rolling OS updates for Proxmox and Talos](docs/operations-upgrades.md)
+
+---
+
 ## Deploy OpenStack VM
 
 Provisions a Debian 13 VM on Unraid (4 vCPU / 16 GB / 100 GB OS disk + 200 GB persistent data disk, IP `192.0.2.10`) that hosts OpenStack services via Kolla-Ansible. This VM is the bare-metal provisioning controller — Ironic PXE-boots the Proxmox nodes through it.
