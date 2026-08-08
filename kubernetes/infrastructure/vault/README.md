@@ -7,13 +7,19 @@ The deployment uses integrated Raft with stable StatefulSet peer discovery:
 
 ```text
 mode: HA Raft
-replicas: 3
+replicas: 1
 storage: nfs-cache
 ui: https://vault.apps.mbhome.biz
 ```
 
-`vault-1` and `vault-2` join the initialized `vault-0` cluster through Raft
-`retry_join` stanzas. Initialize Vault once only, then unseal every sealed pod.
+The current single-replica phase allows one voluntary disruption through the
+Vault PodDisruptionBudget. This lets Kubernetes drain the node and recreate the
+pod elsewhere, with a short Vault outage while the pod stops, starts on the next
+node, and is unsealed if needed.
+
+When the cluster grows back to three Vault replicas, `vault-1` and `vault-2`
+join the initialized `vault-0` cluster through Raft `retry_join` stanzas.
+Initialize Vault once only, then unseal every sealed pod.
 
 Vault starts uninitialized and sealed. That is expected.
 

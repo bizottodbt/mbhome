@@ -68,7 +68,10 @@ spec:
 
       ha:
         enabled: true
-        replicas: 1
+        replicas: 2
+        disruptionBudget:
+          enabled: true
+          maxUnavailable: 1
         raft:
           enabled: true
           setNodeId: true
