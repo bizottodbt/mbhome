@@ -152,3 +152,20 @@ curl -Ik https://whoami.apps.mbhome.biz
 
 From the LAN, AD DNS sends the hostname directly to the Cilium Gateway. From the
 internet, Cloudflare sends the selected hostname through the tunnel.
+
+## Cilium Network Policy
+
+The cloudflared namespace has a workload-scoped Cilium policy:
+
+- Prometheus can scrape the local metrics endpoint on `2000`.
+- cloudflared can resolve DNS through CoreDNS.
+- cloudflared can connect to Cloudflare Tunnel regional endpoints on `7844`
+  using UDP for QUIC and TCP for HTTP/2 fallback.
+- cloudflared can reach the internal Cilium Gateway address `10.20.30.200` on
+  `443`.
+- cloudflared can reach the Unraid HAProxy address `10.20.30.50` on `80` and
+  `443` for non-Kubernetes origins routed through HAProxy.
+
+Cloudflare Tunnel routes are configured in the Cloudflare dashboard, not in this
+repository. When adding a new origin that points somewhere other than the
+internal Gateway or HAProxy, add a matching egress exception here first.
