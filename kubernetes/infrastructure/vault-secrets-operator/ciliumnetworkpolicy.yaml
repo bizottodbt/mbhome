@@ -1,0 +1,59 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: vault-secrets-operator
+  namespace: vault-secrets-operator
+  labels:
+    app.kubernetes.io/name: vault-secrets-operator
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-secrets-operator
+      control-plane: controller-manager
+  ingress:
+    - fromEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toServices:
+        - k8sService:
+            namespace: vault
+            serviceName: vault-active
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP

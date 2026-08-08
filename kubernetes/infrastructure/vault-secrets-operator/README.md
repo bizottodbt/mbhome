@@ -67,3 +67,19 @@ make vault-secrets-operator-status
 
 Existing bootstrap Kubernetes Secrets remain managed by the current Make targets
 until the matching Vault KV entries and `VaultStaticSecret` resources are added.
+
+## Cilium Network Policy
+
+The operator has a workload-scoped Cilium policy for the controller manager:
+
+- kubelet/node-origin health probes can reach `8081`.
+- Prometheus can scrape the secured metrics proxy on `8443` if a scrape target is
+  added later.
+- The controller can reach CoreDNS, the Kubernetes API on `443` and Talos
+  control-plane port `6443`, and the in-cluster `vault-active` service on
+  `8200`.
+
+Application namespaces still need their own policies when they use
+`VaultStaticSecret` resources. Those app policies should allow the app workload
+to use its generated Kubernetes `Secret`, while this policy only covers the
+operator controller.
