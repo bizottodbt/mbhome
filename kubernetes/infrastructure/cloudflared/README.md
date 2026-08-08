@@ -160,7 +160,9 @@ The cloudflared namespace has a workload-scoped Cilium policy:
 - Prometheus can scrape the local metrics endpoint on `2000`.
 - cloudflared can resolve DNS through CoreDNS.
 - cloudflared can connect to Cloudflare Tunnel regional endpoints on `7844`
-  using UDP for QUIC and TCP for HTTP/2 fallback.
+  using UDP for QUIC and TCP for HTTP/2 fallback. The policy includes both the
+  regional FQDNs and Cloudflare's documented Tunnel endpoint IPs so tunnel
+  reconnects do not depend only on Cilium's DNS cache.
 - cloudflared can reach the internal Cilium Gateway address `10.20.30.200` on
   `443`.
 - cloudflared can reach the Unraid HAProxy address `10.20.30.50` on `80` and
