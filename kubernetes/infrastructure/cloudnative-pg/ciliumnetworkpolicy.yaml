@@ -52,6 +52,7 @@ spec:
               protocol: TCP
     - toEndpoints:
         - matchLabels:
+            k8s:io.kubernetes.pod.namespace: dex
             app.kubernetes.io/managed-by: cloudnative-pg
             cnpg.io/podRole: instance
       toPorts:

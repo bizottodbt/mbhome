@@ -16,12 +16,16 @@ The CloudNativePG operator has a workload-scoped Cilium policy:
 - Prometheus can scrape operator metrics on `8080`.
 - The operator can reach CoreDNS and the Kubernetes API on `443` and Talos
   control-plane port `6443`.
-- The operator can reach CloudNativePG-managed PostgreSQL instance pods on
-  `5432` for database reconciliation and `8000` for the instance manager status
-  API, including `/pg/status`.
+- The operator can reach CloudNativePG-managed PostgreSQL instance pods in the
+  `dex` namespace on `5432` for database reconciliation and `8000` for the
+  instance manager status API, including `/pg/status`.
 
 If a database cluster reports `Instance Status Extraction Error` with a timeout
 to `https://<pod-ip>:8000/pg/status`, verify that this policy has been applied.
+
+For future CloudNativePG clusters in other namespaces, add matching egress rules
+for those namespaces or move this allowance to a deliberately scoped shared
+policy.
 
 Application clients need their own namespace policies for database access. This
 policy only covers the operator in `cnpg-system`.
