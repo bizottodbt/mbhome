@@ -7,3 +7,4 @@ resources:
   - helmrelease.yaml
   - clusterissuer.yaml
   - certificate.yaml
+  - ciliumnetworkpolicy.yaml
