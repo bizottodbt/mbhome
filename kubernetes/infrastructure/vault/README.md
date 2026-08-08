@@ -17,6 +17,11 @@ Vault PodDisruptionBudget. This lets Kubernetes drain the node and recreate the
 pod elsewhere, with a short Vault outage while the pod stops, starts on the next
 node, and is unsealed if needed.
 
+Vault uses Shamir sealing in this deployment. Any Vault pod that is killed,
+evicted, restarted, or recreated comes back sealed and must be unsealed before
+it can serve traffic. Until at least one pod is unsealed and active, the
+`vault-active` and `vault-ui` services have no endpoints.
+
 When the cluster grows back to three Vault replicas, `vault-1` and `vault-2`
 join the initialized `vault-0` cluster through Raft `retry_join` stanzas.
 Initialize Vault once only, then unseal every sealed pod.
@@ -73,6 +78,14 @@ To unseal one pod during a rolling operation:
 
 ```bash
 make vault-unseal VAULT_PODS=vault-1
+```
+
+After any node drain, Talos upgrade, Proxmox VM migration that restarts the VM,
+or manual pod deletion, check Vault and unseal any sealed pods:
+
+```bash
+make vault-status
+make vault-unseal
 ```
 
 After logging in with the root token, enable audit logging to the mounted audit
