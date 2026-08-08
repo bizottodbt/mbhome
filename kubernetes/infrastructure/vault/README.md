@@ -180,12 +180,15 @@ the expected paths:
 - Vault Secrets Operator access to the Vault API on port `8200`.
 - DNS egress to CoreDNS.
 - Kubernetes API egress for service registration and Kubernetes auth token
-  review.
+  review on the service port `443` and Talos control-plane port `6443`.
 - Cilium Gateway egress to `10.20.30.200/32` and the
   `gateway-system/cilium-gateway-internal` service on port `443` for internal
   calls to public OIDC URLs. This is L4-only because those calls are HTTPS.
 - OIDC discovery and token exchange go through the internal Gateway address,
   not a separate FQDN policy rule.
+- Direct Dex service egress to `dex/dex:5556` is allowed so OIDC can avoid
+  relying only on the Gateway hairpin path when Cilium preserves workload
+  identity.
 
 The policy is intentionally attached to Vault server pods instead of the whole
 namespace, so future Helm hooks or maintenance jobs are not blocked until their

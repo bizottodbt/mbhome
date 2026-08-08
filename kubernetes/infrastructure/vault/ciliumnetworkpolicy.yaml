@@ -73,6 +73,8 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+            - port: "6443"
+              protocol: TCP
     - toCIDRSet:
         - cidr: 10.20.30.200/32
       toPorts:
@@ -96,4 +98,12 @@ spec:
             - port: "8200"
               protocol: TCP
             - port: "8201"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: dex
+            app.kubernetes.io/name: dex
+      toPorts:
+        - ports:
+            - port: "5556"
               protocol: TCP
