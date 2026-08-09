@@ -328,6 +328,31 @@ Common reasons are strict PodDisruptionBudgets, single-replica stateful apps, or
 pods using local ephemeral data. Fix the workload or accept a planned downtime
 for that workload before proceeding.
 
+### Rebalance After Maintenance
+
+The cluster uses topology spread constraints and PodDisruptionBudgets for the
+main app and infrastructure workloads. The intent is:
+
+- New or recreated replicas prefer an even spread across nodes.
+- Routine drains can evict up to one replica for each protected workload.
+- Single-replica workloads may be briefly unavailable during an intentional
+  drain, then start on another node.
+
+Topology spread is a scheduling rule, not an automatic rebalancer. If a Proxmox
+or Talos maintenance window leaves pods unevenly placed, let normal rollouts
+settle first. If a workload still needs to move, restart that workload
+intentionally after the cluster is healthy:
+
+```bash
+kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
+  --context admin@mbhome -n <namespace> rollout restart deployment/<name>
+```
+
+For StatefulSets such as Vault, Prometheus, Alertmanager, Grafana, and
+operator-managed PostgreSQL, prefer the component-specific rollout or failover
+procedure. Do not delete multiple stateful replicas at once just to improve
+placement.
+
 ### Control-Plane Node Procedure
 
 Only start control-plane upgrades when all control-plane nodes are healthy:

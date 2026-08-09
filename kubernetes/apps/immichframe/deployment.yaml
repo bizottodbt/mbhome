@@ -16,6 +16,13 @@ spec:
       labels:
         app.kubernetes.io/name: immichframe
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: immichframe
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

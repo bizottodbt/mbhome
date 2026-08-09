@@ -19,8 +19,30 @@ hubble:
   enabled: true
   relay:
     enabled: true
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: hubble-relay
+            app.kubernetes.io/part-of: cilium
   ui:
     enabled: true
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: hubble-ui
+            app.kubernetes.io/part-of: cilium
 
 l2announcements:
   enabled: true
@@ -55,3 +77,14 @@ securityContext:
 
 operator:
   replicas: 1
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: cilium-operator
+          app.kubernetes.io/part-of: cilium

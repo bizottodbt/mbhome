@@ -24,6 +24,41 @@ spec:
     remediation:
       retries: 3
   values:
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: controller
+            app.kubernetes.io/instance: cert-manager
+    webhook:
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: webhook
+              app.kubernetes.io/instance: cert-manager
+    cainjector:
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: cainjector
+              app.kubernetes.io/instance: cert-manager
     config:
       gatewayAPI:
         enabled: true

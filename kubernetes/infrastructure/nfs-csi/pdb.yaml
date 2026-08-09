@@ -1,0 +1,14 @@
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: csi-nfs-controller
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: csi-driver-nfs
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: csi-nfs-controller
+      app.kubernetes.io/instance: csi-driver-nfs

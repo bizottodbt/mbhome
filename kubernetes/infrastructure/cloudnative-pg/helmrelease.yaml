@@ -23,3 +23,13 @@ spec:
   upgrade:
     remediation:
       retries: 3
+  values:
+    replicaCount: 1
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: cloudnative-pg
+            app.kubernetes.io/name: cloudnative-pg

@@ -25,6 +25,25 @@ spec:
     crds: CreateReplace
     remediation:
       retries: 3
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              version: v1
+              kind: Deployment
+              name: kube-prometheus-stack-operator
+            patch: |
+              - op: add
+                path: /spec/template/spec/topologySpreadConstraints
+                value:
+                  - maxSkew: 1
+                    topologyKey: kubernetes.io/hostname
+                    whenUnsatisfiable: DoNotSchedule
+                    labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/component: prometheus-operator
+                        app.kubernetes.io/instance: kube-prometheus-stack
+                        app.kubernetes.io/name: kube-prometheus-stack-prometheus-operator
   values:
     fullnameOverride: kube-prometheus-stack
 
@@ -42,11 +61,33 @@ spec:
     prometheus-node-exporter:
       namespaceOverride: kube-system
 
+    kube-state-metrics:
+      podDisruptionBudget:
+        maxUnavailable: 1
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: kube-prometheus-stack
+              app.kubernetes.io/name: kube-state-metrics
+
     grafana:
       admin:
         existingSecret: grafana-admin
         userKey: admin-user
         passwordKey: admin-password
+      podDisruptionBudget:
+        maxUnavailable: 1
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: kube-prometheus-stack
+              app.kubernetes.io/name: grafana
       sidecar:
         dashboards:
           enabled: true
@@ -92,7 +133,17 @@ spec:
           - ReadWriteOnce
         size: 5Gi
 
+    prometheusOperator:
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: null
+        maxUnavailable: 1
+
     prometheus:
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: null
+        maxUnavailable: 1
       prometheusSpec:
         externalUrl: https://prometheus.apps.mbhome.biz
         retention: 15d
@@ -107,6 +158,14 @@ spec:
         ruleNamespaceSelector: {}
         probeNamespaceSelector: {}
         scrapeConfigNamespaceSelector: {}
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: prometheus
+                operator.prometheus.io/name: kube-prometheus-stack-prometheus
         storageSpec:
           volumeClaimTemplate:
             spec:
@@ -118,8 +177,20 @@ spec:
                   storage: 20Gi
 
     alertmanager:
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: null
+        maxUnavailable: 1
       alertmanagerSpec:
         externalUrl: https://alertmanager.apps.mbhome.biz
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                alertmanager: kube-prometheus-stack-alertmanager
+                app.kubernetes.io/name: alertmanager
         storage:
           volumeClaimTemplate:
             spec:
