@@ -13,4 +13,3 @@ resources:
   # - velero
   - vault
   - vault-secrets-operator
-  - minio
