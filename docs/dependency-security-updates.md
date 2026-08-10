@@ -58,6 +58,11 @@ Trivy misconfiguration gating. Flux intentionally ships broad controller RBAC in
 that generated file, and upgrades should happen through Flux bootstrap/update
 tooling rather than local edits to generated manifests.
 
+On pull requests, the workflow also posts or updates a `Trivy Security Summary`
+comment. The comment shows the high/critical counts for vulnerabilities,
+misconfigurations, and secrets, plus whether the PR is safe to merge from
+Trivy's perspective.
+
 Run the same repository scan locally:
 
 ```bash

@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: read
   security-events: write
 
 jobs:
@@ -40,6 +42,147 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
+
+      - name: Trivy JSON report
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivy-config: trivy.yaml
+          format: json
+          output: trivy-results.json
+
+      - name: Comment Trivy summary on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import textwrap
+          import urllib.request
+          from pathlib import Path
+
+          marker = "<!-- mbhome-trivy-summary -->"
+          report_path = Path("trivy-results.json")
+          report = json.loads(report_path.read_text()) if report_path.exists() else {}
+
+          severities = ("CRITICAL", "HIGH")
+          totals = {
+              "vulnerabilities": {severity: 0 for severity in severities},
+              "misconfigurations": {severity: 0 for severity in severities},
+              "secrets": {severity: 0 for severity in severities},
+          }
+          findings = []
+
+          def add_finding(kind, target, item, title_key, id_key):
+              severity = item.get("Severity", "UNKNOWN")
+              if severity not in severities:
+                  return
+              totals[kind][severity] += 1
+              title = item.get(title_key) or item.get("Title") or item.get("Message") or "No title"
+              finding_id = item.get(id_key) or item.get("ID") or item.get("RuleID") or "-"
+              findings.append(
+                  {
+                      "severity": severity,
+                      "kind": kind,
+                      "id": finding_id,
+                      "target": target,
+                      "title": title,
+                  }
+              )
+
+          for result in report.get("Results", []):
+              target = result.get("Target", "-")
+              for item in result.get("Vulnerabilities") or []:
+                  add_finding("vulnerabilities", target, item, "Title", "VulnerabilityID")
+              for item in result.get("Misconfigurations") or []:
+                  if item.get("Status") != "FAIL":
+                      continue
+                  add_finding("misconfigurations", target, item, "Title", "ID")
+              for item in result.get("Secrets") or []:
+                  add_finding("secrets", target, item, "Title", "RuleID")
+
+          total_critical = sum(values["CRITICAL"] for values in totals.values())
+          total_high = sum(values["HIGH"] for values in totals.values())
+          total = total_critical + total_high
+          safe = total == 0
+
+          status_line = (
+              "**Safe to merge from Trivy's perspective.** No unfixed high or critical findings were detected."
+              if safe
+              else "**Not safe to merge yet.** Trivy found high or critical findings that should be reviewed."
+          )
+
+          rows = []
+          for label, key in (
+              ("Vulnerabilities", "vulnerabilities"),
+              ("Misconfigurations", "misconfigurations"),
+              ("Secrets", "secrets"),
+          ):
+              rows.append(
+                  f"| {label} | {totals[key]['CRITICAL']} | {totals[key]['HIGH']} | {sum(totals[key].values())} |"
+              )
+
+          body = [
+              marker,
+              "## Trivy Security Summary",
+              "",
+              status_line,
+              "",
+              "| Finding type | Critical | High | Total |",
+              "| --- | ---: | ---: | ---: |",
+              *rows,
+              f"| **Total** | **{total_critical}** | **{total_high}** | **{total}** |",
+              "",
+              "_Scan settings: repository filesystem scan, `vuln,misconfig,secret`, severity `HIGH,CRITICAL`, `ignore-unfixed: true`._",
+          ]
+
+          if findings:
+              order = {"CRITICAL": 0, "HIGH": 1}
+              findings.sort(key=lambda item: (order.get(item["severity"], 99), item["target"], item["id"]))
+              body.extend(["", "### First Findings", "", "| Severity | Type | ID | Target | Summary |", "| --- | --- | --- | --- | --- |"])
+              for item in findings[:10]:
+                  summary = item["title"].replace("|", "\\|")
+                  target = item["target"].replace("|", "\\|")
+                  body.append(
+                      f"| {item['severity']} | {item['kind']} | `{item['id']}` | `{target}` | {summary} |"
+                  )
+              if len(findings) > 10:
+                  body.append(f"\n_Showing 10 of {len(findings)} findings. Open the workflow log or Code Scanning for full details._")
+
+          comment_body = "\n".join(body) + "\n"
+          Path("trivy-pr-comment.md").write_text(comment_body)
+          print(comment_body)
+
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          repo = os.environ["GITHUB_REPOSITORY"]
+          issue_number = event["pull_request"]["number"]
+          token = os.environ["GITHUB_TOKEN"]
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def request(method, url, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req) as response:
+                  return json.loads(response.read() or b"{}")
+
+          comments_url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
+          comments = request("GET", comments_url)
+          existing = next((comment for comment in comments if marker in comment.get("body", "")), None)
+          if existing:
+              request("PATCH", existing["url"], {"body": comment_body})
+          else:
+              request("POST", comments_url, {"body": comment_body})
+          PY
 
       - name: Trivy PR gate
         uses: aquasecurity/trivy-action@v0.36.0
