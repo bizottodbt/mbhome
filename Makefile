@@ -115,6 +115,7 @@ FLUX_GITHUB_PRIVATE ?= false
 SECURITY_TRIVY_IMAGE ?= aquasec/trivy:0.70.0
 SECURITY_TRIVY_SEVERITY ?= HIGH,CRITICAL
 SECURITY_TRIVY_CACHE ?= $(HOME)/.cache/trivy
+SECURITY_TRIVY_SKIP_FILES ?= kubernetes/clusters/mbhome/flux-system/gotk-components.yaml
 TRIVY ?= trivy
 CONTAINER_RUNTIME ?= docker
 
@@ -857,6 +858,7 @@ security-scan-repo: ## Scan this repository for critical/high vulnerabilities, I
 			--scanners vuln,misconfig,secret \
 			--severity "$(SECURITY_TRIVY_SEVERITY)" \
 			--ignore-unfixed \
+			--skip-files "$(SECURITY_TRIVY_SKIP_FILES)" \
 			--exit-code 1 \
 			"$(CURDIR)"; \
 	elif command -v "$(CONTAINER_RUNTIME)" >/dev/null 2>&1; then \
@@ -867,6 +869,7 @@ security-scan-repo: ## Scan this repository for critical/high vulnerabilities, I
 			--scanners vuln,misconfig,secret \
 			--severity "$(SECURITY_TRIVY_SEVERITY)" \
 			--ignore-unfixed \
+			--skip-files "$(SECURITY_TRIVY_SKIP_FILES)" \
 			--exit-code 1 \
 			/repo; \
 	else \
