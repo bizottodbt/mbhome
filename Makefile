@@ -101,7 +101,7 @@ CILIUM_DIR := kubernetes/infrastructure/cilium
 # renovate: datasource=github-releases depName=cilium/cilium
 CILIUM_VERSION ?= 1.19.5
 # renovate: datasource=github-releases depName=kubernetes-sigs/gateway-api
-GATEWAY_API_VERSION ?= v1.4.1
+GATEWAY_API_VERSION ?= v1.6.1
 GATEWAY_API_STANDARD_INSTALL_URL := https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
 # renovate: datasource=github-releases depName=cert-manager/cert-manager
 CERT_MANAGER_VERSION ?= v1.21.1
