@@ -99,7 +99,7 @@ CLOUDFLARED_NAMESPACE ?= cloudflared
 CLOUDFLARED_TOKEN_SECRET ?= cloudflared-tunnel-token
 CILIUM_DIR := kubernetes/infrastructure/cilium
 # renovate: datasource=github-releases depName=cilium/cilium
-CILIUM_VERSION ?= 1.19.5
+CILIUM_VERSION ?= 1.20.0
 # renovate: datasource=github-releases depName=kubernetes-sigs/gateway-api
 GATEWAY_API_VERSION ?= v1.4.1
 GATEWAY_API_STANDARD_INSTALL_URL := https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
