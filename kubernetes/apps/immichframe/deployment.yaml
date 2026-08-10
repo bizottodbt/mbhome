@@ -53,11 +53,14 @@ spec:
             - name: secrets
               mountPath: /app/secrets
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            readOnlyRootFilesystem: true
       containers:
         - name: immichframe
           image: ghcr.io/immichframe/immichframe:latest
@@ -77,11 +80,14 @@ spec:
             - name: secrets
               mountPath: /app/secrets
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
+            readOnlyRootFilesystem: true
           resources:
             requests:
               cpu: 50m
@@ -112,3 +118,5 @@ spec:
         - name: secrets
           secret:
             secretName: immichframe
+        - name: tmp
+          emptyDir: {}

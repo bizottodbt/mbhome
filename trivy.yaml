@@ -1,0 +1,5 @@
+---
+scan:
+  skip-files:
+    - kubernetes/clusters/mbhome/flux-system/gotk-components.yaml
+    - ./kubernetes/clusters/mbhome/flux-system/gotk-components.yaml
