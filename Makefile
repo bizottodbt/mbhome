@@ -104,7 +104,7 @@ CILIUM_VERSION ?= 1.19.5
 GATEWAY_API_VERSION ?= v1.4.1
 GATEWAY_API_STANDARD_INSTALL_URL := https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
 # renovate: datasource=github-releases depName=cert-manager/cert-manager
-CERT_MANAGER_VERSION ?= v1.21.0
+CERT_MANAGER_VERSION ?= v1.21.1
 CERT_MANAGER_CRDS_URL := https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.crds.yaml
 FLUX_CLUSTER_PATH ?= kubernetes/clusters/mbhome
 FLUX_GITHUB_OWNER ?= bizottodbt
