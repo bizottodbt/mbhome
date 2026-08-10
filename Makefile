@@ -98,9 +98,12 @@ VAULT_APP_POLICY ?= app-$(VAULT_APP_NAMESPACE)
 CLOUDFLARED_NAMESPACE ?= cloudflared
 CLOUDFLARED_TOKEN_SECRET ?= cloudflared-tunnel-token
 CILIUM_DIR := kubernetes/infrastructure/cilium
+# renovate: datasource=github-releases depName=cilium/cilium
 CILIUM_VERSION ?= 1.19.5
+# renovate: datasource=github-releases depName=kubernetes-sigs/gateway-api
 GATEWAY_API_VERSION ?= v1.4.1
 GATEWAY_API_STANDARD_INSTALL_URL := https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+# renovate: datasource=github-releases depName=cert-manager/cert-manager
 CERT_MANAGER_VERSION ?= v1.21.0
 CERT_MANAGER_CRDS_URL := https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.crds.yaml
 FLUX_CLUSTER_PATH ?= kubernetes/clusters/mbhome
@@ -109,8 +112,13 @@ FLUX_GITHUB_REPOSITORY ?= mbhome
 FLUX_GIT_BRANCH ?= main
 FLUX_GITHUB_PERSONAL ?= true
 FLUX_GITHUB_PRIVATE ?= false
+SECURITY_TRIVY_IMAGE ?= aquasec/trivy:0.70.0
+SECURITY_TRIVY_SEVERITY ?= HIGH,CRITICAL
+SECURITY_TRIVY_CACHE ?= $(HOME)/.cache/trivy
+TRIVY ?= trivy
+CONTAINER_RUNTIME ?= docker
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudflared-token-secret cloudflared-required-secrets-check cloudflared-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudflared-token-secret cloudflared-required-secrets-check cloudflared-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile security-scan-repo security-scan-cluster-images proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -840,6 +848,62 @@ flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check clo
 	$(FLUX_ADMIN) reconcile kustomization databases --namespace flux-system --with-source
 	$(FLUX_ADMIN) reconcile kustomization identity --namespace flux-system --with-source
 	$(FLUX_ADMIN) reconcile kustomization apps --namespace flux-system --with-source
+
+security-scan-repo: ## Scan this repository for critical/high vulnerabilities, IaC issues, and committed secrets
+	@mkdir -p "$(SECURITY_TRIVY_CACHE)"
+	@if command -v "$(TRIVY)" >/dev/null 2>&1; then \
+		"$(TRIVY)" fs \
+			--cache-dir "$(SECURITY_TRIVY_CACHE)" \
+			--scanners vuln,misconfig,secret \
+			--severity "$(SECURITY_TRIVY_SEVERITY)" \
+			--ignore-unfixed \
+			--exit-code 1 \
+			"$(CURDIR)"; \
+	elif command -v "$(CONTAINER_RUNTIME)" >/dev/null 2>&1; then \
+		"$(CONTAINER_RUNTIME)" run --rm \
+			-v "$(CURDIR):/repo:ro" \
+			-v "$(SECURITY_TRIVY_CACHE):/root/.cache/" \
+			"$(SECURITY_TRIVY_IMAGE)" fs \
+			--scanners vuln,misconfig,secret \
+			--severity "$(SECURITY_TRIVY_SEVERITY)" \
+			--ignore-unfixed \
+			--exit-code 1 \
+			/repo; \
+	else \
+		echo "Install trivy or set CONTAINER_RUNTIME to docker/podman before running this target"; \
+		exit 1; \
+	fi
+
+security-scan-cluster-images: ## Scan every unique container image currently running in the cluster
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@mkdir -p "$(SECURITY_TRIVY_CACHE)"
+	@images="$$($(KUBECTL_ADMIN) get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | sort -u)"; \
+	test -n "$$images" || (echo "No running container images found"; exit 1); \
+	failed=0; \
+	for image in $$images; do \
+		echo ""; \
+		echo "==> Scanning $$image"; \
+		if command -v "$(TRIVY)" >/dev/null 2>&1; then \
+			"$(TRIVY)" image \
+				--cache-dir "$(SECURITY_TRIVY_CACHE)" \
+				--severity "$(SECURITY_TRIVY_SEVERITY)" \
+				--ignore-unfixed \
+				--exit-code 1 \
+				"$$image" || failed=1; \
+		elif command -v "$(CONTAINER_RUNTIME)" >/dev/null 2>&1; then \
+			"$(CONTAINER_RUNTIME)" run --rm \
+				-v "$(SECURITY_TRIVY_CACHE):/root/.cache/" \
+				"$(SECURITY_TRIVY_IMAGE)" image \
+				--severity "$(SECURITY_TRIVY_SEVERITY)" \
+				--ignore-unfixed \
+				--exit-code 1 \
+				"$$image" || failed=1; \
+		else \
+			echo "Install trivy or set CONTAINER_RUNTIME to docker/podman before running this target"; \
+			exit 1; \
+		fi; \
+	done; \
+	exit $$failed
 
 proxmox-ad-vms-init: ## Initialize Terraform for AD/domain-controller VM shells
 	cd $(PROXMOX_AD_TF_DIR) && terraform init

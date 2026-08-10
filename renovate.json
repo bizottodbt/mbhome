@@ -1,0 +1,92 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "customManagers:makefileVersions",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Stockholm",
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Dependency Dashboard",
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rangeStrategy": "bump",
+  "separateMajorMinor": true,
+  "ignorePaths": [
+    "kubernetes/clusters/mbhome/flux-system/gotk-components.yaml",
+    "infrastructure/talos/clusters/*/controlplane.yaml",
+    "infrastructure/talos/clusters/*/worker.yaml"
+  ],
+  "packageRules": [
+    {
+      "description": "Group Flux-managed Helm chart updates.",
+      "matchManagers": [
+        "flux"
+      ],
+      "groupName": "Flux HelmRelease chart updates",
+      "labels": [
+        "dependencies",
+        "helm"
+      ]
+    },
+    {
+      "description": "Group Kubernetes and Docker Compose image updates.",
+      "matchManagers": [
+        "kubernetes",
+        "docker-compose"
+      ],
+      "groupName": "Container image updates",
+      "labels": [
+        "dependencies",
+        "container"
+      ],
+      "pinDigests": true
+    },
+    {
+      "description": "Keep major container image updates as an explicit dashboard decision.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Group Terraform provider and module updates.",
+      "matchManagers": [
+        "terraform"
+      ],
+      "groupName": "Terraform provider and module updates",
+      "labels": [
+        "dependencies",
+        "terraform"
+      ]
+    },
+    {
+      "description": "Group GitHub Actions updates.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions updates",
+      "labels": [
+        "dependencies",
+        "github-actions"
+      ]
+    },
+    {
+      "description": "Treat pre-Flux bootstrap tool updates as explicit infrastructure changes.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "labels": [
+        "dependencies",
+        "bootstrap"
+      ],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

@@ -15,6 +15,7 @@ vars, BMC access, user passwords, and state files in git-ignored local files.
 ## Operations Runbooks
 
 - [Rolling OS updates for Proxmox and Talos](docs/operations-upgrades.md)
+- [Dependency and security update automation](docs/dependency-security-updates.md)
 
 ---
 
