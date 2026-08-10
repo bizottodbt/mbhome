@@ -63,7 +63,7 @@ jobs:
           python3 <<'PY'
           import json
           import os
-          import textwrap
+          import urllib.error
           import urllib.request
           from pathlib import Path
 
@@ -157,12 +157,18 @@ jobs:
 
           comment_body = "\n".join(body) + "\n"
           Path("trivy-pr-comment.md").write_text(comment_body)
+          if os.environ.get("GITHUB_STEP_SUMMARY"):
+              Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(comment_body)
           print(comment_body)
 
           event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
           repo = os.environ["GITHUB_REPOSITORY"]
           issue_number = event["pull_request"]["number"]
           token = os.environ["GITHUB_TOKEN"]
+          if not token:
+              print("GITHUB_TOKEN is not available; wrote Trivy summary to the workflow job summary only.")
+              raise SystemExit(0)
+
           headers = {
               "Accept": "application/vnd.github+json",
               "Authorization": f"Bearer {token}",
@@ -176,12 +182,22 @@ jobs:
                   return json.loads(response.read() or b"{}")
 
           comments_url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
-          comments = request("GET", comments_url)
-          existing = next((comment for comment in comments if marker in comment.get("body", "")), None)
-          if existing:
-              request("PATCH", existing["url"], {"body": comment_body})
-          else:
-              request("POST", comments_url, {"body": comment_body})
+          try:
+              comments = request("GET", comments_url)
+              existing = next((comment for comment in comments if marker in comment.get("body", "")), None)
+              if existing:
+                  request("PATCH", existing["url"], {"body": comment_body})
+              else:
+                  request("POST", comments_url, {"body": comment_body})
+          except urllib.error.HTTPError as error:
+              if error.code == 403:
+                  print(
+                      "GitHub returned 403 while writing the PR comment. "
+                      "This usually means the workflow token is read-only for this PR context. "
+                      "The Trivy summary was still written to the workflow job summary."
+                  )
+                  raise SystemExit(0)
+              raise
           PY
 
       - name: Trivy PR gate
