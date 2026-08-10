@@ -52,6 +52,12 @@ to `main`, weekly schedule, and manual dispatch. The workflow uploads SARIF to
 GitHub code scanning and fails on unfixed high or critical findings that Trivy
 can detect in repo files.
 
+The Trivy config lives in [`trivy.yaml`](../trivy.yaml). The generated Flux controller bundle
+`kubernetes/clusters/mbhome/flux-system/gotk-components.yaml` is skipped for
+Trivy misconfiguration gating. Flux intentionally ships broad controller RBAC in
+that generated file, and upgrades should happen through Flux bootstrap/update
+tooling rather than local edits to generated manifests.
+
 Run the same repository scan locally:
 
 ```bash

@@ -46,11 +46,14 @@ spec:
                 - name: scripts
                   mountPath: /app/scripts
                   readOnly: true
+                - name: tmp
+                  mountPath: /tmp
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
                   drop:
                     - ALL
+                readOnlyRootFilesystem: true
               resources:
                 requests:
                   cpu: 50m
@@ -62,3 +65,5 @@ spec:
             - name: scripts
               configMap:
                 name: immich-album-sync-scripts
+            - name: tmp
+              emptyDir: {}
