@@ -1,6 +1,6 @@
 services:
   cloudflare-ddns:
-    image: favonia/cloudflare-ddns:1
+    image: favonia/cloudflare-ddns:1@sha256:61013368c8f95981c0bb8bf56d962078d8b4e95724a554fa2dabb20d6e478097
     container_name: wireguard-cloudflare-ddns
     restart: unless-stopped
     user: "${DDNS_UID:-1000}:${DDNS_GID:-1000}"
@@ -18,7 +18,7 @@ services:
       - cloudflare_api_token
 
   wg-easy:
-    image: ghcr.io/wg-easy/wg-easy:15
+    image: ghcr.io/wg-easy/wg-easy:15@sha256:93bbd593e07bab98d02807a28770ac87ab6c48818e319e68c1f66561feb99876
     container_name: wg-easy
     environment:
       # The web UI listens inside the container on TCP/51821.
