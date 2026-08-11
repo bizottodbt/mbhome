@@ -1,0 +1,17 @@
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: default
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: monitoring
+spec:
+  vaultConnectionRef: vault-secrets-operator/default
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: app-monitoring
+    serviceAccount: vault-sync
+    audiences:
+      - vault

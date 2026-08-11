@@ -58,6 +58,66 @@ make flux-reconcile
 make monitoring-status
 ```
 
+## Phone Alerts With Pushover
+
+Alertmanager sends warning and critical alerts to Pushover. The Pushover
+credentials are not stored in Git and are not created by Make as Kubernetes
+Secrets. They live in Vault and are synced into the `monitoring` namespace by
+Vault Secrets Operator.
+
+Create a Pushover application for Alertmanager, then write the credentials to
+Vault. This prompts inside the Vault pod so the token values are not committed
+and do not need to be written into a Make target:
+
+```bash
+kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
+  --context admin@mbhome \
+  -n vault exec -it vault-0 -- vault login
+
+kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
+  --context admin@mbhome \
+  -n vault exec -it vault-0 -- sh -ec '
+    read -rsp "Pushover user key: " pushover_user_key
+    echo
+    read -rsp "Pushover app API token: " pushover_api_token
+    echo
+    vault kv put mbhome/apps/monitoring/pushover \
+      user-key="$pushover_user_key" \
+      api-token="$pushover_api_token"
+  '
+```
+
+Bootstrap the monitoring namespace Vault role once:
+
+```bash
+make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=monitoring
+```
+
+Then reconcile:
+
+```bash
+make flux-reconcile
+make monitoring-status
+```
+
+The synced Kubernetes Secret is:
+
+```text
+namespace: monitoring
+secret: alertmanager-pushover
+keys: user-key, api-token
+```
+
+Alert routing is intentionally simple:
+
+- `severity="critical"` -> Pushover priority `1`, repeated every hour while firing
+- `severity="warning"` -> Pushover priority `0`, repeated every four hours while firing
+- resolved alerts are sent so the phone shows recovery too
+
+Pushover emergency priority `2` is not used by default because it repeats until
+acknowledged. Add it later only for wake-me-up alerts such as a fully unavailable
+cluster or storage exhaustion.
+
 ## Cilium Network Policies
 
 The monitoring namespace has Cilium ingress policies for:

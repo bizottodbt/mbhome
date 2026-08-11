@@ -739,6 +739,8 @@ monitoring-status: ## Show kube-prometheus-stack pods, services, routes, and PVC
 	$(KUBECTL_ADMIN) -n monitoring get pods -o wide
 	$(KUBECTL_ADMIN) -n monitoring get svc kube-prometheus-stack-grafana kube-prometheus-stack-prometheus kube-prometheus-stack-alertmanager
 	$(KUBECTL_ADMIN) -n monitoring get httproute grafana prometheus alertmanager
+	$(KUBECTL_ADMIN) -n monitoring get vaultauth,vaultstaticsecret || true
+	$(KUBECTL_ADMIN) -n monitoring get secret alertmanager-pushover || true
 	$(KUBECTL_ADMIN) -n monitoring get pvc
 	$(KUBECTL_ADMIN) get prometheus,alertmanager --all-namespaces
 

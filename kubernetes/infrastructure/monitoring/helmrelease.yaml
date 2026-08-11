@@ -177,12 +177,66 @@ spec:
                   storage: 20Gi
 
     alertmanager:
+      config:
+        global:
+          resolve_timeout: 5m
+        route:
+          group_by:
+            - namespace
+            - alertname
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
+          receiver: "null"
+          routes:
+            - receiver: pushover-critical
+              matchers:
+                - severity="critical"
+              repeat_interval: 1h
+            - receiver: pushover-warning
+              matchers:
+                - severity="warning"
+              repeat_interval: 4h
+        inhibit_rules:
+          - source_matchers:
+              - severity="critical"
+            target_matchers:
+              - severity="warning"
+            equal:
+              - namespace
+              - alertname
+          - source_matchers:
+              - alertname="InfoInhibitor"
+            target_matchers:
+              - severity="info"
+            equal:
+              - namespace
+        receivers:
+          - name: "null"
+          - name: pushover-critical
+            pushover_configs:
+              - send_resolved: true
+                user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user-key
+                token_file: /etc/alertmanager/secrets/alertmanager-pushover/api-token
+                priority: "1"
+                sound: persistent
+                url: https://alertmanager.apps.mbhome.biz/#/alerts
+          - name: pushover-warning
+            pushover_configs:
+              - send_resolved: true
+                user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user-key
+                token_file: /etc/alertmanager/secrets/alertmanager-pushover/api-token
+                priority: "0"
+                sound: pushover
+                url: https://alertmanager.apps.mbhome.biz/#/alerts
       podDisruptionBudget:
         enabled: true
         minAvailable: null
         maxUnavailable: 1
       alertmanagerSpec:
         externalUrl: https://alertmanager.apps.mbhome.biz
+        secrets:
+          - alertmanager-pushover
         topologySpreadConstraints:
           - maxSkew: 1
             topologyKey: kubernetes.io/hostname
