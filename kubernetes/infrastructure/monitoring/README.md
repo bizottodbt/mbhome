@@ -113,6 +113,9 @@ Alert routing is intentionally simple:
 - `severity="critical"` -> Pushover priority `1`, repeated every hour while firing
 - `severity="warning"` -> Pushover priority `0`, repeated every four hours while firing
 - resolved alerts are sent so the phone shows recovery too
+- notifications are grouped by alert name plus the most useful target label
+  (`node`, `pod`, or `persistentvolumeclaim`) so the phone message points to the
+  thing to investigate instead of dumping the full Prometheus label set
 
 Pushover emergency priority `2` is not used by default because it repeats until
 acknowledged. Add it later only for wake-me-up alerts such as a fully unavailable

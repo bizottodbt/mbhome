@@ -184,6 +184,9 @@ spec:
           group_by:
             - namespace
             - alertname
+            - node
+            - pod
+            - persistentvolumeclaim
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 4h
@@ -218,6 +221,17 @@ spec:
               - send_resolved: true
                 user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user-key
                 token_file: /etc/alertmanager/secrets/alertmanager-pushover/api-token
+                title: >-
+                  {{ if eq .Status "resolved" }}RESOLVED{{ else }}CRITICAL{{ end }}:
+                  {{ .CommonLabels.alertname }}
+                message: >-
+                  {{ range .Alerts }}
+                  {{ if .Labels.node }}node={{ .Labels.node }} {{ end -}}
+                  {{ if .Labels.namespace }}ns={{ .Labels.namespace }} {{ end -}}
+                  {{ if .Labels.pod }}pod={{ .Labels.pod }} {{ end -}}
+                  {{ if .Labels.persistentvolumeclaim }}pvc={{ .Labels.persistentvolumeclaim }} {{ end -}}
+                  {{ if .Annotations.summary }}{{ .Annotations.summary }}{{ else }}{{ .Annotations.description }}{{ end }}
+                  {{ end }}
                 priority: "1"
                 sound: persistent
                 url: https://alertmanager.apps.mbhome.biz/#/alerts
@@ -226,6 +240,17 @@ spec:
               - send_resolved: true
                 user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user-key
                 token_file: /etc/alertmanager/secrets/alertmanager-pushover/api-token
+                title: >-
+                  {{ if eq .Status "resolved" }}RESOLVED{{ else }}WARNING{{ end }}:
+                  {{ .CommonLabels.alertname }}
+                message: >-
+                  {{ range .Alerts }}
+                  {{ if .Labels.node }}node={{ .Labels.node }} {{ end -}}
+                  {{ if .Labels.namespace }}ns={{ .Labels.namespace }} {{ end -}}
+                  {{ if .Labels.pod }}pod={{ .Labels.pod }} {{ end -}}
+                  {{ if .Labels.persistentvolumeclaim }}pvc={{ .Labels.persistentvolumeclaim }} {{ end -}}
+                  {{ if .Annotations.summary }}{{ .Annotations.summary }}{{ else }}{{ .Annotations.description }}{{ end }}
+                  {{ end }}
                 priority: "0"
                 sound: pushover
                 url: https://alertmanager.apps.mbhome.biz/#/alerts
