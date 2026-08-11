@@ -53,10 +53,19 @@ spec:
     kubeEtcd:
       enabled: false
 
+    kubeControllerManager:
+      enabled: false
+
+    kubeScheduler:
+      enabled: false
+
     defaultRules:
       rules:
         etcd: false
+        kubeControllerManager: false
         kubeProxy: false
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
 
     prometheus-node-exporter:
       namespaceOverride: kube-system

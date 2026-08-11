@@ -12,6 +12,13 @@ It provides:
 - node-exporter
 - default Kubernetes dashboards and alert rules
 
+Talos runs etcd, kube-scheduler, kube-controller-manager, and kube-proxy
+differently from a kubeadm cluster. This stack disables kube-prometheus-stack
+scrapes/rules for etcd, kube-proxy, kube-scheduler, and kube-controller-manager
+until those endpoints are intentionally exposed and verified. Talos health and
+Kubernetes node readiness remain the source of truth for basic control-plane
+health.
+
 Grafana, Prometheus, and Alertmanager are exposed internally through the Cilium
 Gateway:
 
