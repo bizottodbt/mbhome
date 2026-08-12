@@ -40,6 +40,14 @@ spec:
         - ports:
             - port: "11434"
               protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: dex
+            k8s:app.kubernetes.io/name: dex
+      toPorts:
+        - ports:
+            - port: "5556"
+              protocol: TCP
     - toFQDNs:
         - matchName: dex.apps.mbhome.biz
       toPorts:

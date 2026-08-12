@@ -29,8 +29,8 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: vault
-            app.kubernetes.io/name: vault
-            component: server
+            k8s:app.kubernetes.io/name: vault
+            k8s:component: server
       toPorts:
         - ports:
             - port: "5556"
@@ -38,7 +38,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: llm
-            app.kubernetes.io/name: open-webui
+            k8s:app.kubernetes.io/name: open-webui
       toPorts:
         - ports:
             - port: "5556"
