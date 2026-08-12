@@ -26,7 +26,7 @@ General:
   PlayAudio: false
   Layout: "splitview"
 Accounts:
-  - ImmichServerUrl: "https://immich.mbhome.biz"
+  - ImmichServerUrl: "http://10.20.30.50:2283" #"https://immich.mbhome.biz"
     ApiKeyFile: "/app/secrets/immich-api-key"
     ShowMemories: false
     ShowFavorites: false
