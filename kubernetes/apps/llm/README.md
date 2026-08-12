@@ -37,8 +37,9 @@ a token in Hugging Face under **Settings -> Access Tokens**. Use either a
 fine-grained token limited to the model repositories you need, or a `read` token
 if you only want general download access.
 
-The application reads it from the optional `HF_TOKEN` key. If this key is not in
-Vault, the pod still starts normally:
+The application mounts the optional `HF_TOKEN` key as a file and points
+`HF_TOKEN_PATH` at it. If this key is not in Vault, the pod still starts
+normally:
 
 ```bash
 export HF_TOKEN='hf_...'
@@ -59,9 +60,11 @@ make llm-status
 ## Models
 
 Pull the first model explicitly after Ollama is running. A small coding model is a
-good CPU-only starting point:
+good CPU-only starting point. Open WebUI is configured to use Ollama for
+embeddings as well, so also pull the embedding model:
 
 ```bash
+make llm-model-pull LLM_MODEL=nomic-embed-text
 make llm-model-pull LLM_MODEL=qwen2.5-coder:3b
 make llm-models
 ```
@@ -72,7 +75,6 @@ survives pod restarts.
 Open `https://llm.apps.mbhome.biz` after the model is present. Open WebUI creates
 its initial admin user during first login; later this can be connected to Dex/OIDC.
 
-Open WebUI is allowed to reach Hugging Face over HTTPS because a fresh install
-downloads its default embedding model from Hugging Face during first startup.
-After the cache is populated, this can be tightened further or replaced with an
-offline/preloaded embedding model flow.
+Open WebUI is allowed to reach Hugging Face over HTTPS for optional Hub
+downloads, but its default RAG embedding path is configured to use the local
+Ollama service instead of downloading SentenceTransformers during startup.
