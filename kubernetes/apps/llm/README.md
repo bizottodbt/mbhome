@@ -54,3 +54,8 @@ survives pod restarts.
 
 Open `https://llm.apps.mbhome.biz` after the model is present. Open WebUI creates
 its initial admin user during first login; later this can be connected to Dex/OIDC.
+
+Open WebUI is allowed to reach Hugging Face over HTTPS because a fresh install
+downloads its default embedding model from Hugging Face during first startup.
+After the cache is populated, this can be tightened further or replaced with an
+offline/preloaded embedding model flow.

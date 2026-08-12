@@ -40,6 +40,16 @@ spec:
         - ports:
             - port: "11434"
               protocol: TCP
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchPattern: "*.huggingface.co"
+        - matchName: hf.co
+        - matchPattern: "*.hf.co"
+        - matchPattern: "*.xethub.hf.co"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
