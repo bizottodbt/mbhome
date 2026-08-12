@@ -82,6 +82,20 @@ spec:
               value: email
             - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
               value: "true"
+            - name: ENABLE_OAUTH_ROLE_MANAGEMENT
+              value: "true"
+            - name: OAUTH_ROLES_CLAIM
+              value: groups
+            - name: OAUTH_ALLOWED_ROLES
+              value: open-webui-users,open-webui-admins
+            - name: OAUTH_ADMIN_ROLES
+              value: open-webui-admins
+            - name: ENABLE_OAUTH_GROUP_MANAGEMENT
+              value: "true"
+            - name: OAUTH_GROUP_CLAIM
+              value: groups
+            - name: ENABLE_OAUTH_GROUP_CREATION
+              value: "false"
             - name: OLLAMA_BASE_URL
               value: http://ollama.llm.svc.cluster.local:11434
             - name: RAG_EMBEDDING_ENGINE

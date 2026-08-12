@@ -65,6 +65,17 @@ copy from `mbhome/apps/llm/open-webui` into `llm/open-webui`.
 Local username/password login is disabled for Open WebUI; Dex is the expected
 login path at `https://ai.apps.mbhome.biz`.
 
+Open WebUI role access is driven by AD group claims from Dex:
+
+| AD group | Open WebUI role |
+| --- | --- |
+| `open-webui-users` | User |
+| `open-webui-admins` | Admin |
+
+Users outside those groups are denied Open WebUI access. OAuth group management
+is enabled, but automatic group creation is disabled so Open WebUI does not
+create local groups for every AD group returned by Dex.
+
 Reconcile and wait for the app:
 
 ```bash
