@@ -101,18 +101,18 @@ spec:
             - http://127.0.0.1:8000
             - http://127.0.0.1:18000
         - id: grafana
-          secret: "{{ .Env.DEX_GRAFANA_CLIENT_SECRET }}"
+          secretEnv: DEX_GRAFANA_CLIENT_SECRET
           name: Grafana
           redirectURIs:
             - https://grafana.apps.mbhome.biz/login/generic_oauth
         - id: vault
-          secret: "{{ .Env.DEX_VAULT_CLIENT_SECRET }}"
+          secretEnv: DEX_VAULT_CLIENT_SECRET
           name: Vault
           redirectURIs:
             - https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
             - http://localhost:8250/oidc/callback
         - id: open-webui
-          secret: "{{ .Env.DEX_OPEN_WEBUI_CLIENT_SECRET }}"
+          secretEnv: DEX_OPEN_WEBUI_CLIENT_SECRET
           name: Open WebUI
           redirectURIs:
             - https://ai.apps.mbhome.biz/oauth/oidc/callback
