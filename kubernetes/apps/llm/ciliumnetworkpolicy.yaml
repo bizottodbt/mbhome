@@ -41,6 +41,12 @@ spec:
             - port: "11434"
               protocol: TCP
     - toFQDNs:
+        - matchName: dex.apps.mbhome.biz
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toFQDNs:
         - matchName: huggingface.co
         - matchPattern: "*.huggingface.co"
         - matchName: hf.co

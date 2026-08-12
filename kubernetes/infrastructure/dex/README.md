@@ -112,6 +112,27 @@ export VAULT_OIDC_CLIENT_SECRET='...'
 make vault-oidc-secret
 ```
 
+Open WebUI uses Dex as a confidential OAuth client:
+
+```text
+client id: open-webui
+redirect URI: https://ai.apps.mbhome.biz/oauth/oidc/callback
+```
+
+Create the Dex namespace Vault auth role once, then write the shared Open WebUI
+client secret into Vault before reconciling Flux:
+
+```bash
+make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=dex
+export OPEN_WEBUI_OAUTH_CLIENT_SECRET='...'
+make open-webui-oauth-secret
+```
+
+Vault Secrets Operator syncs the Dex copy from
+`mbhome/apps/dex/open-webui` into `dex/dex-open-webui-client`. The matching
+Open WebUI copy is synced from `mbhome/apps/llm/open-webui` into
+`llm/open-webui`.
+
 The repo includes a credential-free OIDC kubeconfig template at
 `kubernetes/clusters/mbhome/kubeconfig.oidc.yaml`. Install it into your home
 directory for day-to-day access:

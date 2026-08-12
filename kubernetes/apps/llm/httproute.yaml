@@ -12,7 +12,7 @@ spec:
       namespace: gateway-system
       sectionName: https
   hostnames:
-    - llm.apps.mbhome.biz
+    - ai.apps.mbhome.biz
   rules:
     - backendRefs:
         - name: open-webui

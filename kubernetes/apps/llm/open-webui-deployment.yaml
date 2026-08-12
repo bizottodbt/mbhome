@@ -59,7 +59,29 @@ spec:
             - name: WEBUI_NAME
               value: mbhome LLM
             - name: WEBUI_URL
-              value: https://llm.apps.mbhome.biz
+              value: https://ai.apps.mbhome.biz
+            - name: ENABLE_OAUTH_SIGNUP
+              value: "true"
+            - name: ENABLE_LOGIN_FORM
+              value: "false"
+            - name: ENABLE_OAUTH_PERSISTENT_CONFIG
+              value: "false"
+            - name: OAUTH_PROVIDER_NAME
+              value: Dex
+            - name: OAUTH_CLIENT_ID
+              value: open-webui
+            - name: OPENID_PROVIDER_URL
+              value: https://dex.apps.mbhome.biz/.well-known/openid-configuration
+            - name: OPENID_REDIRECT_URI
+              value: https://ai.apps.mbhome.biz/oauth/oidc/callback
+            - name: OAUTH_SCOPES
+              value: openid email profile groups
+            - name: OAUTH_USERNAME_CLAIM
+              value: preferred_username
+            - name: OAUTH_EMAIL_CLAIM
+              value: email
+            - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
+              value: "true"
             - name: OLLAMA_BASE_URL
               value: http://ollama.llm.svc.cluster.local:11434
             - name: RAG_EMBEDDING_ENGINE
@@ -75,6 +97,11 @@ spec:
                 secretKeyRef:
                   name: open-webui
                   key: WEBUI_SECRET_KEY
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: open-webui
+                  key: OAUTH_CLIENT_SECRET
             - name: HF_TOKEN_PATH
               value: /var/run/secrets/huggingface/token
           ports:

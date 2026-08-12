@@ -25,7 +25,7 @@ Real apps live beside the smoke test. Current apps:
 | App | URL | Notes |
 | --- | --- | --- |
 | ImmichFrame | `https://immichframe.apps.mbhome.biz` | Digital photo frame backed by Immich. The Immich API key is synced from Vault. |
-| LLM | `https://llm.apps.mbhome.biz` | Open WebUI backed by Ollama. The WebUI secret key is synced from Vault and models live in the Ollama PVC. |
+| LLM | `https://ai.apps.mbhome.biz` | Open WebUI backed by Ollama. The WebUI secret key and OAuth client secret are synced from Vault, and models live in the Ollama PVC. |
 
 Seed the ImmichFrame secret before reconciling the app:
 

@@ -3,7 +3,7 @@
 This app runs a local CPU-friendly LLM stack:
 
 - Ollama serves local models inside the cluster.
-- Open WebUI provides the browser chat UI at `https://llm.apps.mbhome.biz`.
+- Open WebUI provides the browser chat UI at `https://ai.apps.mbhome.biz`.
 - Future automation can call Ollama directly at `http://ollama.llm.svc.cluster.local:11434`.
 
 Ollama stores downloaded models in the `ollama-models` PVC. Open WebUI stores users,
@@ -50,6 +50,21 @@ kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
   vault kv patch mbhome/apps/llm/open-webui HF_TOKEN="$HF_TOKEN"
 ```
 
+Open WebUI uses Dex as its OIDC provider. Generate a client secret and write the
+same value into Vault for Dex and Open WebUI before reconciling:
+
+```bash
+export OPEN_WEBUI_OAUTH_CLIENT_SECRET="$(openssl rand -base64 48)"
+make open-webui-oauth-secret
+```
+
+Vault Secrets Operator syncs the Dex copy from
+`mbhome/apps/dex/open-webui` into `dex/dex-open-webui-client`, and the Open WebUI
+copy from `mbhome/apps/llm/open-webui` into `llm/open-webui`.
+
+Local username/password login is disabled for Open WebUI; Dex is the expected
+login path at `https://ai.apps.mbhome.biz`.
+
 Reconcile and wait for the app:
 
 ```bash
@@ -72,7 +87,7 @@ make llm-models
 The first pull can take a while. The model is stored in the `ollama-models` PVC and
 survives pod restarts.
 
-Open `https://llm.apps.mbhome.biz` after the model is present. Open WebUI creates
+Open `https://ai.apps.mbhome.biz` after the model is present. Open WebUI creates
 its initial admin user during first login; later this can be connected to Dex/OIDC.
 
 Open WebUI is allowed to reach Hugging Face over HTTPS for optional Hub

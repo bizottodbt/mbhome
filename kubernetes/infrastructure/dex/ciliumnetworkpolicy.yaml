@@ -35,6 +35,14 @@ spec:
         - ports:
             - port: "5556"
               protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: llm
+            app.kubernetes.io/name: open-webui
+      toPorts:
+        - ports:
+            - port: "5556"
+              protocol: TCP
   egress:
     - toEndpoints:
         - matchLabels:

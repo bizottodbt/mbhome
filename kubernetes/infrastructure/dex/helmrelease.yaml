@@ -33,6 +33,8 @@ spec:
           name: dex-grafana-client
       - secretRef:
           name: dex-vault-client
+      - secretRef:
+          name: dex-open-webui-client
     replicaCount: 2
     podDisruptionBudget:
       enabled: true
@@ -109,6 +111,11 @@ spec:
           redirectURIs:
             - https://vault.apps.mbhome.biz/ui/vault/auth/oidc/oidc/callback
             - http://localhost:8250/oidc/callback
+        - id: open-webui
+          secret: "{{ .Env.DEX_OPEN_WEBUI_CLIENT_SECRET }}"
+          name: Open WebUI
+          redirectURIs:
+            - https://ai.apps.mbhome.biz/oauth/oidc/callback
       connectors:
         - type: ldap
           id: ad
