@@ -124,7 +124,7 @@ client secret into Vault before reconciling Flux:
 
 ```bash
 make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=dex
-export OPEN_WEBUI_OAUTH_CLIENT_SECRET='...'
+export OPEN_WEBUI_OAUTH_CLIENT_SECRET="$(openssl rand -hex 32)"
 make open-webui-oauth-secret
 ```
 

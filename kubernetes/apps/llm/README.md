@@ -54,7 +54,7 @@ Open WebUI uses Dex as its OIDC provider. Generate a client secret and write the
 same value into Vault for Dex and Open WebUI before reconciling:
 
 ```bash
-export OPEN_WEBUI_OAUTH_CLIENT_SECRET="$(openssl rand -base64 48)"
+export OPEN_WEBUI_OAUTH_CLIENT_SECRET="$(openssl rand -hex 32)"
 make open-webui-oauth-secret
 ```
 
