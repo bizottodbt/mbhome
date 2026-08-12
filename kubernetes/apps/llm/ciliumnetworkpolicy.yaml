@@ -46,6 +46,20 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    - toCIDRSet:
+        - cidr: 10.20.30.200/32
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toServices:
+        - k8sService:
+            namespace: gateway-system
+            serviceName: cilium-gateway-internal
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
     - toFQDNs:
         - matchName: huggingface.co
         - matchPattern: "*.huggingface.co"
