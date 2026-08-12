@@ -67,6 +67,12 @@ spec:
                 secretKeyRef:
                   name: open-webui
                   key: WEBUI_SECRET_KEY
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: open-webui
+                  key: HF_TOKEN
+                  optional: true
           ports:
             - name: http
               containerPort: 8080

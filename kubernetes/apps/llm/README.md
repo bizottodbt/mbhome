@@ -32,6 +32,23 @@ kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
   vault kv put mbhome/apps/llm/open-webui WEBUI_SECRET_KEY="$OPEN_WEBUI_SECRET_KEY"
 ```
 
+Optionally add a Hugging Face token for better Hub download rate limits. Create
+a token in Hugging Face under **Settings -> Access Tokens**. Use either a
+fine-grained token limited to the model repositories you need, or a `read` token
+if you only want general download access.
+
+The application reads it from the optional `HF_TOKEN` key. If this key is not in
+Vault, the pod still starts normally:
+
+```bash
+export HF_TOKEN='hf_...'
+
+kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
+  --context admin@mbhome \
+  -n vault exec vault-0 -- \
+  vault kv patch mbhome/apps/llm/open-webui HF_TOKEN="$HF_TOKEN"
+```
+
 Reconcile and wait for the app:
 
 ```bash
