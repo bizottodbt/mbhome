@@ -32,6 +32,25 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: prepare-static-assets
+          image: ghcr.io/open-webui/open-webui:v0.9.5
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ec
+            - |
+              cp -R /app/backend/open_webui/static/. /static-assets/
+          volumeMounts:
+            - name: static-assets
+              mountPath: /static-assets
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: open-webui
           image: ghcr.io/open-webui/open-webui:v0.9.5
@@ -54,6 +73,8 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/backend/data
+            - name: static-assets
+              mountPath: /app/backend/open_webui/static
             - name: tmp
               mountPath: /tmp
           securityContext:
@@ -86,5 +107,7 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: open-webui-data
+        - name: static-assets
+          emptyDir: {}
         - name: tmp
           emptyDir: {}

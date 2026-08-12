@@ -37,10 +37,12 @@ spec:
           image: ollama/ollama:0.32.0
           imagePullPolicy: IfNotPresent
           env:
+            - name: HOME
+              value: /ollama
             - name: OLLAMA_HOST
               value: 0.0.0.0:11434
             - name: OLLAMA_MODELS
-              value: /models
+              value: /ollama/models
             - name: OLLAMA_KEEP_ALIVE
               value: 30m
           ports:
@@ -48,7 +50,7 @@ spec:
               containerPort: 11434
           volumeMounts:
             - name: models
-              mountPath: /models
+              mountPath: /ollama
             - name: tmp
               mountPath: /tmp
           securityContext:
