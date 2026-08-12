@@ -1768,6 +1768,17 @@ before testing HTTPRoutes. This keeps the first Gateway internal-only; later
 externally reachable services can be added with Cloudflare Tunnel without
 changing the internal Gateway model.
 
+Application workloads live under:
+
+```text
+kubernetes/apps/
+```
+
+The local LLM stack is under `kubernetes/apps/llm/`. It exposes Open WebUI at
+`https://llm.apps.mbhome.biz` and keeps Ollama models in the `ollama-models`
+PVC. See `kubernetes/apps/llm/README.md` for the Vault bootstrap and first model
+pull.
+
 Cloudflare Tunnel is managed by Flux under:
 
 ```text

@@ -4,4 +4,5 @@ kind: Kustomization
 resources:
   - immich-album-sync
   - immichframe
+  - llm
   - whoami

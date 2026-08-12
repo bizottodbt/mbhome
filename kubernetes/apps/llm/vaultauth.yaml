@@ -1,0 +1,17 @@
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: default
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: llm
+spec:
+  vaultConnectionRef: vault-secrets-operator/default
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: app-llm
+    serviceAccount: vault-sync
+    audiences:
+      - vault

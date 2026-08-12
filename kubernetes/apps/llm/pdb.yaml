@@ -1,0 +1,26 @@
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ollama
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: ollama
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ollama
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: open-webui
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: open-webui
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: open-webui

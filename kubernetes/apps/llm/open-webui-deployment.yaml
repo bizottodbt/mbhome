@@ -1,0 +1,90 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: open-webui
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: open-webui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: open-webui
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: open-webui
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: open-webui
+          image: ghcr.io/open-webui/open-webui:v0.9.5
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: WEBUI_NAME
+              value: mbhome LLM
+            - name: WEBUI_URL
+              value: https://llm.apps.mbhome.biz
+            - name: OLLAMA_BASE_URL
+              value: http://ollama.llm.svc.cluster.local:11434
+            - name: WEBUI_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-webui
+                  key: WEBUI_SECRET_KEY
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /app/backend/data
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: open-webui-data
+        - name: tmp
+          emptyDir: {}

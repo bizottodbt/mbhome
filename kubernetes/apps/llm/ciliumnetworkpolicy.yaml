@@ -1,0 +1,91 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: open-webui
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: open-webui
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-webui
+  ingress:
+    - fromEntities:
+        - ingress
+        - host #for health checks
+        - remote-node #for health checks
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: ollama
+      toPorts:
+        - ports:
+            - port: "11434"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ollama
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: ollama
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: ollama
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: open-webui
+      toPorts:
+        - ports:
+            - port: "11434"
+              protocol: TCP
+    - fromEntities:
+        - host #for health checks and manual model pulls
+        - remote-node #for health checks and manual model pulls
+      toPorts:
+        - ports:
+            - port: "11434"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
