@@ -62,6 +62,8 @@ spec:
     defaultRules:
       rules:
         etcd: false
+        kubeApiserverBurnrate: false
+        kubeApiserverSlos: false
         kubeControllerManager: false
         kubeProxy: false
         kubeSchedulerAlerting: false

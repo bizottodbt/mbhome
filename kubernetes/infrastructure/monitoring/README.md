@@ -19,6 +19,13 @@ until those endpoints are intentionally exposed and verified. Talos health and
 Kubernetes node readiness remain the source of truth for basic control-plane
 health.
 
+The default kube-apiserver error-budget burn alerts are also disabled. They are
+SLO-style alerts based on API request latency and 5xx ratios, and can fire
+during short operator/webhook churn, node drains, or maintenance even when the
+cluster is healthy from an operator perspective. Concrete apiserver health rules
+and dashboards remain enabled; use Prometheus for API latency/error
+investigation and Headlamp for workload/resource state.
+
 Grafana, Prometheus, and Alertmanager are exposed internally through the Cilium
 Gateway:
 
