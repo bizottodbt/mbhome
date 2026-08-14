@@ -133,6 +133,22 @@ Vault Secrets Operator syncs the Dex copy from
 Open WebUI copy is synced from `mbhome/apps/llm/open-webui` into
 `llm/open-webui`.
 
+Forgejo uses Dex as a confidential OAuth client:
+
+```text
+client id: forgejo
+redirect URI: https://git.apps.mbhome.biz/user/oauth2/dex/callback
+```
+
+Create the shared Forgejo client secret before reconciling Flux. The generated
+value is stored in `mbhome/apps/dex/forgejo` for Dex and
+`mbhome/apps/forgejo/oauth` for Forgejo:
+
+```bash
+export FORGEJO_OAUTH_CLIENT_SECRET="$(openssl rand -hex 32)"
+make forgejo-oauth-secret
+```
+
 The repo includes a credential-free OIDC kubeconfig template at
 `kubernetes/clusters/mbhome/kubeconfig.oidc.yaml`. Install it into your home
 directory for day-to-day access:

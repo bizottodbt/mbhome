@@ -35,6 +35,8 @@ spec:
           name: dex-vault-client
       - secretRef:
           name: dex-open-webui-client
+      - secretRef:
+          name: dex-forgejo-client
     replicaCount: 2
     podDisruptionBudget:
       enabled: true
@@ -116,6 +118,11 @@ spec:
           name: Open WebUI
           redirectURIs:
             - https://ai.apps.mbhome.biz/oauth/oidc/callback
+        - id: forgejo
+          secretEnv: DEX_FORGEJO_CLIENT_SECRET
+          name: Forgejo
+          redirectURIs:
+            - https://git.apps.mbhome.biz/user/oauth2/dex/callback
       connectors:
         - type: ldap
           id: ad

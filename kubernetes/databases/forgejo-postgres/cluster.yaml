@@ -1,0 +1,25 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: forgejo-postgres
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-postgres
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: forgejo
+      owner: forgejo
+      secret:
+        name: forgejo-postgres-app
+  storage:
+    storageClass: nfs-user
+    size: 10Gi
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
+  monitoring:
+    enablePodMonitor: false

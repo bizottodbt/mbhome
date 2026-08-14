@@ -5,6 +5,7 @@ resources:
   - serviceaccount.yaml
   - vaultauth.yaml
   - vaultstaticsecret-open-webui-client.yaml
+  - vaultstaticsecret-forgejo-client.yaml
   - helmrepository.yaml
   - helmrelease.yaml
   - httproute.yaml

@@ -1,0 +1,19 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: forgejo
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo
+spec:
+  parentRefs:
+    - name: internal
+      namespace: gateway-system
+      sectionName: https
+  hostnames:
+    - git.apps.mbhome.biz
+  rules:
+    - backendRefs:
+        - name: forgejo-http
+          port: 3000

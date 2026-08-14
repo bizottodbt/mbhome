@@ -1,0 +1,143 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: forgejo
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: forgejo
+  targetNamespace: forgejo
+  chartRef:
+    kind: OCIRepository
+    name: forgejo
+    namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    replicaCount: 1
+    strategy:
+      type: Recreate
+
+    serviceAccount:
+      create: true
+      automountServiceAccountToken: false
+
+    podSecurityContext:
+      fsGroup: 1000
+
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: forgejo
+            app.kubernetes.io/name: forgejo
+
+    persistence:
+      enabled: true
+      create: true
+      storageClass: nfs-user
+      size: 30Gi
+      accessModes:
+        - ReadWriteOnce
+
+    service:
+      http:
+        type: ClusterIP
+        port: 3000
+      ssh:
+        type: ClusterIP
+        port: 22
+
+    postgresql:
+      enabled: false
+    postgresql-ha:
+      enabled: false
+
+    gitea:
+      admin:
+        existingSecret: forgejo-admin
+        email: forgejo@mbhome.biz
+        passwordMode: initialOnlyRequireReset
+      oauth:
+        - name: dex
+          provider: openidConnect
+          existingSecret: forgejo-oauth
+          autoDiscoverUrl: https://dex.apps.mbhome.biz/.well-known/openid-configuration
+          scopes: "openid email profile groups"
+      additionalConfigFromEnvs:
+        - name: FORGEJO__DATABASE__PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-postgres-app
+              key: password
+        - name: FORGEJO__SECURITY__SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-config
+              key: SECURITY_SECRET_KEY
+        - name: FORGEJO__SECURITY__INTERNAL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-config
+              key: SECURITY_INTERNAL_TOKEN
+        - name: FORGEJO__OAUTH2__JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-config
+              key: OAUTH2_JWT_SECRET
+        - name: FORGEJO__SERVER__LFS_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: forgejo-config
+              key: SERVER_LFS_JWT_SECRET
+      config:
+        APP_NAME: "mbhome Forgejo"
+        RUN_MODE: prod
+        service:
+          DISABLE_REGISTRATION: false
+          ALLOW_ONLY_EXTERNAL_REGISTRATION: true
+          SHOW_REGISTRATION_BUTTON: false
+          REQUIRE_SIGNIN_VIEW: true
+        server:
+          DOMAIN: git.apps.mbhome.biz
+          ROOT_URL: https://git.apps.mbhome.biz/
+          PROTOCOL: http
+          HTTP_PORT: 3000
+          DISABLE_SSH: true
+        database:
+          DB_TYPE: postgres
+          HOST: forgejo-postgres-rw.forgejo.svc.cluster.local:5432
+          NAME: forgejo
+          USER: forgejo
+          SSL_MODE: require
+        cache:
+          ADAPTER: memory
+        session:
+          PROVIDER: memory
+        queue:
+          TYPE: level
+        metrics:
+          ENABLED: false

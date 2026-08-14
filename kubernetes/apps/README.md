@@ -24,8 +24,27 @@ Real apps live beside the smoke test. Current apps:
 
 | App | URL | Notes |
 | --- | --- | --- |
+| Forgejo | `https://git.apps.mbhome.biz` | Internal Git service. PostgreSQL is managed by CloudNativePG, persistent data lives on `nfs-user`, and admin/OAuth/database secrets are synced from Vault. |
 | ImmichFrame | `https://immichframe.apps.mbhome.biz` | Digital photo frame backed by Immich. The Immich API key is synced from Vault. |
 | LLM | `https://ai.apps.mbhome.biz` | Open WebUI backed by Ollama. The WebUI secret key and OAuth client secret are synced from Vault, and models live in the Ollama PVC. |
+
+Seed Forgejo before reconciling it:
+
+```bash
+export FORGEJO_POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+make forgejo-postgres-secret
+
+make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=forgejo
+
+make forgejo-config-secret
+
+export FORGEJO_ADMIN_USERNAME=forgejo_admin
+export FORGEJO_ADMIN_PASSWORD="$(openssl rand -base64 36)"
+make forgejo-admin-secret
+
+export FORGEJO_OAUTH_CLIENT_SECRET="$(openssl rand -hex 32)"
+make forgejo-oauth-secret
+```
 
 Seed the ImmichFrame secret before reconciling the app:
 
