@@ -23,6 +23,18 @@ spec:
   upgrade:
     remediation:
       retries: 3
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              group: apps
+              version: v1
+              kind: Deployment
+              name: cloudnative-pg
+            patch: |
+              - op: add
+                path: /spec/template/metadata/annotations/mbhome.biz~1network-policy-refresh
+                value: "2026-08-14-cnpg-managed-instances"
   values:
     replicaCount: 1
     topologySpreadConstraints:
