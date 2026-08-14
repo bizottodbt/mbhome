@@ -118,6 +118,10 @@ spec:
           existingSecret: forgejo-oauth
           autoDiscoverUrl: https://dex.apps.mbhome.biz/.well-known/openid-configuration
           scopes: "openid email profile groups"
+          requiredClaimName: groups
+          requiredClaimValue: git-users
+          groupClaimName: groups
+          adminGroup: git-admins
       additionalConfigFromEnvs:
         - name: FORGEJO__DATABASE__PASSWD
           valueFrom:

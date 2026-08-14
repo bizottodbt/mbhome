@@ -113,6 +113,25 @@ Forgejo allows external registration only. That means a first-time Dex user can
 be created by logging in with Dex, but the local password registration button is
 not shown.
 
+## AD group access
+
+Dex passes AD group names to Forgejo through the OIDC `groups` claim. Forgejo is
+configured to use these groups:
+
+```text
+git-users  -> allowed to sign in and create an external Forgejo account
+git-admins -> Forgejo site administrator
+```
+
+Users in `git-admins` should also be in `git-users`, because `git-users` is the
+required login claim. Apply the AD desired state before
+testing new Forgejo users:
+
+```bash
+make windows-ad-directory
+make flux-reconcile
+```
+
 ## Notes
 
 Forgejo is useful as an internal/private Git service, but avoid circular

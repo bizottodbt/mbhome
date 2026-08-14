@@ -113,6 +113,18 @@ groups:
     category: Security
     description: Users with read-only Vault access through Dex OIDC
 
+  - name: git-admins
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users with Git service administrator access through Dex OIDC
+
+  - name: git-users
+    path: OU=Groups,OU=LAB,DC=ad,DC=example
+    scope: Global
+    category: Security
+    description: Users allowed to sign in to the Git service through Dex OIDC
+
 users:
   - username: admin_example
     display_name: Admin Example
@@ -130,6 +142,8 @@ users:
       - k8s-admins
       - grafana-admins
       - vault-admins
+      - git-admins
+      - git-users
     enabled: true
     password: CHANGE_ME_INITIAL_PASSWORD
     must_change_password: false
