@@ -36,8 +36,8 @@ spec:
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: forgejo
-            app.kubernetes.io/managed-by: cloudnative-pg
-            cnpg.io/cluster: forgejo-postgres
+            k8s:app.kubernetes.io/managed-by: cloudnative-pg
+            k8s:cnpg.io/cluster: forgejo-postgres
       toPorts:
         - ports:
             - port: "5432"
