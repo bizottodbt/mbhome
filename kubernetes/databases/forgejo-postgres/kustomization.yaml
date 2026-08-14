@@ -6,4 +6,5 @@ resources:
   - serviceaccount.yaml
   - vaultauth.yaml
   - vaultstaticsecret-postgres.yaml
+  - ciliumnetworkpolicy.yaml
   - cluster.yaml
