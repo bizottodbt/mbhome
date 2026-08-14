@@ -791,59 +791,44 @@ open-webui-oauth-secret: ## Write the shared Open WebUI OAuth client secret into
 	@printf '%s\n' "$$OPEN_WEBUI_OAUTH_CLIENT_SECRET" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r client_secret; write_secret() { path="$$1"; key="$$2"; if vault kv get "$$path" >/dev/null 2>&1; then vault kv patch "$$path" "$$key=$$client_secret"; else vault kv put "$$path" "$$key=$$client_secret"; fi; }; write_secret "$(VAULT_KV_MOUNT)/apps/dex/open-webui" DEX_OPEN_WEBUI_CLIENT_SECRET; write_secret "$(VAULT_KV_MOUNT)/apps/$(LLM_NAMESPACE)/open-webui" OAUTH_CLIENT_SECRET'
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 
-forgejo-postgres-secret: ## Create/update the Forgejo Postgres application owner secret from FORGEJO_POSTGRES_PASSWORD
+forgejo-postgres-secret: ## Write the Forgejo Postgres application owner secret to Vault
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$FORGEJO_POSTGRES_PASSWORD" || (echo "Export FORGEJO_POSTGRES_PASSWORD before running this target"; exit 1)
-	$(KUBECTL_ADMIN) create namespace "$(FORGEJO_NAMESPACE)" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
-	$(KUBECTL_ADMIN) -n "$(FORGEJO_NAMESPACE)" create secret generic forgejo-postgres-app --type=kubernetes.io/basic-auth --from-literal=username="$(FORGEJO_POSTGRES_USER)" --from-literal=password="$$FORGEJO_POSTGRES_PASSWORD" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 	@echo "Enter a Vault token with enough privilege to write $(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/postgres."
 	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
 	@printf '%s\n%s\n' "$(FORGEJO_POSTGRES_USER)" "$$FORGEJO_POSTGRES_PASSWORD" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r username; IFS= read -r password; vault kv put "$(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/postgres" username="$$username" password="$$password"'
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 
-forgejo-config-secret: ## Generate/write Forgejo internal app secrets to Vault and Kubernetes
+forgejo-config-secret: ## Generate/write Forgejo internal app secrets to Vault
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	$(KUBECTL_ADMIN) create namespace "$(FORGEJO_NAMESPACE)" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 	@set -eu; \
 		security_secret_key="$${FORGEJO_SECURITY_SECRET_KEY:-$$(openssl rand -hex 32)}"; \
 		security_internal_token="$${FORGEJO_SECURITY_INTERNAL_TOKEN:-$$(openssl rand -hex 32)}"; \
 		oauth2_jwt_secret="$${FORGEJO_OAUTH2_JWT_SECRET:-$$(openssl rand -hex 32)}"; \
 		server_lfs_jwt_secret="$${FORGEJO_SERVER_LFS_JWT_SECRET:-$$(openssl rand -hex 32)}"; \
-		$(KUBECTL_ADMIN) -n "$(FORGEJO_NAMESPACE)" create secret generic forgejo-config \
-			--from-literal=SECURITY_SECRET_KEY="$$security_secret_key" \
-			--from-literal=SECURITY_INTERNAL_TOKEN="$$security_internal_token" \
-			--from-literal=OAUTH2_JWT_SECRET="$$oauth2_jwt_secret" \
-			--from-literal=SERVER_LFS_JWT_SECRET="$$server_lfs_jwt_secret" \
-			--dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -; \
 		echo "Enter a Vault token with enough privilege to write $(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/config."; \
 		$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login; \
 		printf '%s\n%s\n%s\n%s\n' "$$security_secret_key" "$$security_internal_token" "$$oauth2_jwt_secret" "$$server_lfs_jwt_secret" | \
 			$(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r security_secret_key; IFS= read -r security_internal_token; IFS= read -r oauth2_jwt_secret; IFS= read -r server_lfs_jwt_secret; vault kv put "$(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/config" SECURITY_SECRET_KEY="$$security_secret_key" SECURITY_INTERNAL_TOKEN="$$security_internal_token" OAUTH2_JWT_SECRET="$$oauth2_jwt_secret" SERVER_LFS_JWT_SECRET="$$server_lfs_jwt_secret"'
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 
-forgejo-admin-secret: ## Write the initial Forgejo admin secret to Vault and Kubernetes
+forgejo-admin-secret: ## Write the initial Forgejo admin secret to Vault
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$FORGEJO_ADMIN_PASSWORD" || (echo "Export FORGEJO_ADMIN_PASSWORD before running this target"; exit 1)
-	$(KUBECTL_ADMIN) create namespace "$(FORGEJO_NAMESPACE)" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
-	$(KUBECTL_ADMIN) -n "$(FORGEJO_NAMESPACE)" create secret generic forgejo-admin --from-literal=username="$(FORGEJO_ADMIN_USERNAME)" --from-literal=password="$$FORGEJO_ADMIN_PASSWORD" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 	@echo "Enter a Vault token with enough privilege to write $(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/admin."
 	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
 	@printf '%s\n%s\n' "$(FORGEJO_ADMIN_USERNAME)" "$$FORGEJO_ADMIN_PASSWORD" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r username; IFS= read -r password; vault kv put "$(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/admin" username="$$username" password="$$password"'
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 
-forgejo-oauth-secret: ## Write the shared Dex/Forgejo OAuth client secret to Vault and Kubernetes
+forgejo-oauth-secret: ## Write the shared Dex/Forgejo OAuth client secret to Vault
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@test -n "$$FORGEJO_OAUTH_CLIENT_SECRET" || (echo "Export FORGEJO_OAUTH_CLIENT_SECRET before running this target"; exit 1)
-	$(KUBECTL_ADMIN) create namespace "$(FORGEJO_NAMESPACE)" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
-	$(KUBECTL_ADMIN) create namespace dex --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
-	$(KUBECTL_ADMIN) -n "$(FORGEJO_NAMESPACE)" create secret generic forgejo-oauth --from-literal=key="$(FORGEJO_OAUTH_CLIENT_ID)" --from-literal=secret="$$FORGEJO_OAUTH_CLIENT_SECRET" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
-	$(KUBECTL_ADMIN) -n dex create secret generic dex-forgejo-client --from-literal=DEX_FORGEJO_CLIENT_SECRET="$$FORGEJO_OAUTH_CLIENT_SECRET" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
 	@echo "Enter a Vault token with enough privilege to write $(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/oauth and $(VAULT_KV_MOUNT)/apps/dex/forgejo."
 	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
 	@printf '%s\n%s\n' "$(FORGEJO_OAUTH_CLIENT_ID)" "$$FORGEJO_OAUTH_CLIENT_SECRET" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r client_id; IFS= read -r client_secret; vault kv put "$(VAULT_KV_MOUNT)/apps/$(FORGEJO_NAMESPACE)/oauth" key="$$client_id" secret="$$client_secret"; vault kv put "$(VAULT_KV_MOUNT)/apps/dex/forgejo" DEX_FORGEJO_CLIENT_SECRET="$$client_secret"'
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 
-forgejo-required-secrets-check: ## Confirm Forgejo bootstrap secrets exist before Flux reconciles apps
+forgejo-required-secrets-check: ## Confirm Forgejo secrets have been synced by Vault Secrets Operator
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	@$(KUBECTL_ADMIN) -n "$(FORGEJO_NAMESPACE)" get secret forgejo-postgres-app >/dev/null || (echo "Missing $(FORGEJO_NAMESPACE)/forgejo-postgres-app. Run: export FORGEJO_POSTGRES_PASSWORD='...' && make forgejo-postgres-secret"; exit 1)
 	@$(KUBECTL_ADMIN) -n "$(FORGEJO_NAMESPACE)" get secret forgejo-config >/dev/null || (echo "Missing $(FORGEJO_NAMESPACE)/forgejo-config. Run: make forgejo-config-secret"; exit 1)
@@ -886,7 +871,6 @@ dex-required-secrets-check: ## Confirm Dex database and LDAP secrets exist befor
 	@$(KUBECTL_ADMIN) -n dex get secret dex-ldap-bind >/dev/null || (echo "Missing dex/dex-ldap-bind. Run: export DEX_LDAP_BIND_DN='...' DEX_LDAP_BIND_PASSWORD='...' && make dex-ldap-secret"; exit 1)
 	@$(KUBECTL_ADMIN) -n dex get secret dex-grafana-client >/dev/null || (echo "Missing dex/dex-grafana-client. Run: export GRAFANA_OAUTH_CLIENT_SECRET='...' && make grafana-oauth-secret"; exit 1)
 	@$(KUBECTL_ADMIN) -n dex get secret dex-vault-client >/dev/null || (echo "Missing dex/dex-vault-client. Run: export VAULT_OIDC_CLIENT_SECRET='...' && make vault-oidc-secret"; exit 1)
-	@$(KUBECTL_ADMIN) -n dex get secret dex-forgejo-client >/dev/null || (echo "Missing dex/dex-forgejo-client. Run: export FORGEJO_OAUTH_CLIENT_SECRET='...' && make forgejo-oauth-secret"; exit 1)
 
 dex-status: ## Show Dex pods, route, RBAC bindings, and OIDC discovery
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
@@ -949,7 +933,7 @@ flux-tree: ## Show Flux-managed layers and applied revisions
 	@$(KUBECTL_ADMIN) get helmreleases.helm.toolkit.fluxcd.io --all-namespaces \
 		-o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.lastAppliedRevision,CHART:.spec.chart.spec.chart,TARGET:.spec.targetNamespace' || true
 
-flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check cloudflared-required-secrets-check forgejo-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
+flux-reconcile: monitoring-required-secrets-check dex-required-secrets-check cloudflared-required-secrets-check ## Force Flux to pull Git and reconcile mbhome platform layers
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
 	$(FLUX_ADMIN) reconcile source git flux-system --namespace flux-system
 	$(FLUX_ADMIN) reconcile kustomization infrastructure --namespace flux-system --with-source

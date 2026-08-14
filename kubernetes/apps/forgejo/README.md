@@ -32,9 +32,8 @@ export FORGEJO_POSTGRES_PASSWORD="$(openssl rand -hex 32)"
 make forgejo-postgres-secret
 ```
 
-This writes the bootstrap Kubernetes secret and stores the same value in Vault
-at `mbhome/apps/forgejo/postgres`. Vault Secrets Operator keeps
-`forgejo/forgejo-postgres-app` synced from that path afterwards.
+This stores the value in Vault at `mbhome/apps/forgejo/postgres`. Vault Secrets
+Operator creates and keeps `forgejo/forgejo-postgres-app` synced from that path.
 
 Bootstrap the namespace Vault role once before Flux reconciles the Forgejo
 database and app layers:
@@ -58,8 +57,8 @@ FORGEJO_OAUTH2_JWT_SECRET
 FORGEJO_SERVER_LFS_JWT_SECRET
 ```
 
-Those values are stored in Vault at `mbhome/apps/forgejo/config` and synced to
-`forgejo/forgejo-config`.
+Those values are stored in Vault at `mbhome/apps/forgejo/config`. Vault Secrets
+Operator creates and keeps `forgejo/forgejo-config` synced from that path.
 
 Create the initial admin secret in Vault:
 
@@ -82,6 +81,9 @@ That target writes one generated value into:
 mbhome/apps/dex/forgejo                 -> dex/dex-forgejo-client
 mbhome/apps/forgejo/oauth               -> forgejo/forgejo-oauth
 ```
+
+The Make targets do not create those Kubernetes Secrets directly. Vault is the
+source of truth; Vault Secrets Operator creates the namespace-local Secrets.
 
 The Forgejo OAuth secret uses the upstream chart format:
 
