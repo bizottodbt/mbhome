@@ -50,10 +50,11 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    - toEndpoints:
-        - matchLabels:
-            k8s:app.kubernetes.io/managed-by: cloudnative-pg
-            k8s:cnpg.io/podRole: instance
+    # The CNPG operator reconciles PostgreSQL instance pods across namespaces.
+    # Use the cluster entity here instead of namespace-local endpoint matching,
+    # otherwise newly added database namespaces can stall on /pg/status checks.
+    - toEntities:
+        - cluster
       toPorts:
         - ports:
             - port: "5432"
