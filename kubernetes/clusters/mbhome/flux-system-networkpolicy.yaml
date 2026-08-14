@@ -36,6 +36,8 @@ spec:
             app: helm-controller
       toPorts:
         - ports:
+            - port: "80"
+              protocol: TCP
             - port: "9090"
               protocol: TCP
   egress:
@@ -66,6 +68,8 @@ spec:
             app: notification-controller
       toPorts:
         - ports:
+            - port: "80"
+              protocol: TCP
             - port: "9090"
               protocol: TCP
     - toFQDNs:
@@ -147,6 +151,8 @@ spec:
             app: source-controller
       toPorts:
         - ports:
+            - port: "80"
+              protocol: TCP
             - port: "9090"
               protocol: TCP
     - toEndpoints:
@@ -155,6 +161,8 @@ spec:
             app: notification-controller
       toPorts:
         - ports:
+            - port: "80"
+              protocol: TCP
             - port: "9090"
               protocol: TCP
 ---
@@ -214,6 +222,8 @@ spec:
             app: source-controller
       toPorts:
         - ports:
+            - port: "80"
+              protocol: TCP
             - port: "9090"
               protocol: TCP
     - toEndpoints:
@@ -222,6 +232,8 @@ spec:
             app: notification-controller
       toPorts:
         - ports:
+            - port: "80"
+              protocol: TCP
             - port: "9090"
               protocol: TCP
 ---
@@ -265,6 +277,8 @@ spec:
             app: helm-controller
       toPorts:
         - ports:
+            - port: "80"
+              protocol: TCP
             - port: "9090"
               protocol: TCP
   egress:
