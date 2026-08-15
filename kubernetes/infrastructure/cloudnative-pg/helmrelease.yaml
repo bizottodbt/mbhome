@@ -34,7 +34,7 @@ spec:
             patch: |
               - op: add
                 path: /spec/template/metadata/annotations/mbhome.biz~1network-policy-refresh
-                value: "2026-08-15-cnpg-main-policy-forgejo"
+                value: "2026-08-15-cnpg-forgejo-any-labels"
   values:
     replicaCount: 1
     topologySpreadConstraints:
