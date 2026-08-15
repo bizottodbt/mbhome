@@ -61,7 +61,10 @@ k8s-viewers     -> Viewer
 ```
 
 Users outside those groups can authenticate at Dex but Grafana will reject them.
-The local Grafana admin login remains enabled as a break-glass path.
+Grafana local password sign-in and Basic auth are disabled; Dex/AD is the
+normal sign-in path. The `grafana-admin` secret is still kept for bootstrap and
+break-glass recovery, but using it requires temporarily reverting the auth
+settings or using direct admin access.
 Grafana requests `offline_access` and has refresh-token support enabled, so
 active Grafana sessions follow the Dex refresh-token lifetime.
 

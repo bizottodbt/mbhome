@@ -110,7 +110,9 @@ spec:
         server:
           root_url: https://grafana.apps.mbhome.biz
         auth:
-          disable_login_form: false
+          disable_login_form: true
+        auth.basic:
+          enabled: false
         auth.generic_oauth:
           enabled: true
           name: Dex
