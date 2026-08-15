@@ -9,7 +9,9 @@ metadata:
 spec:
   endpointSelector:
     matchLabels:
-      k8s:cnpg.io/cluster: forgejo-postgres
+      app.kubernetes.io/managed-by: cloudnative-pg
+      cnpg.io/cluster: forgejo-postgres
+      cnpg.io/podRole: instance
   ingress:
     - fromEndpoints:
         - matchLabels:
@@ -24,16 +26,16 @@ spec:
               protocol: TCP
     - fromEndpoints:
         - matchLabels:
-            k8s:app.kubernetes.io/name: forgejo
-            k8s:app.kubernetes.io/instance: forgejo
+            app.kubernetes.io/name: forgejo
+            app.kubernetes.io/instance: forgejo
       toPorts:
         - ports:
             - port: "5432"
               protocol: TCP
     - fromEndpoints:
         - matchLabels:
-            k8s:cnpg.io/cluster: forgejo-postgres
-            k8s:cnpg.io/podRole: instance
+            cnpg.io/cluster: forgejo-postgres
+            cnpg.io/podRole: instance
       toPorts:
         - ports:
             - port: "5432"
@@ -64,8 +66,8 @@ spec:
               protocol: TCP
     - toEndpoints:
         - matchLabels:
-            k8s:cnpg.io/cluster: forgejo-postgres
-            k8s:cnpg.io/podRole: instance
+            cnpg.io/cluster: forgejo-postgres
+            cnpg.io/podRole: instance
       toPorts:
         - ports:
             - port: "5432"
