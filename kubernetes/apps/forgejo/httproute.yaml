@@ -14,6 +14,10 @@ spec:
   hostnames:
     - git.apps.mbhome.biz
   rules:
-    - backendRefs:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - name: forgejo-http
           port: 3000
