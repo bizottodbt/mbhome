@@ -7,4 +7,3 @@ resources:
   - helmrelease.yaml
   - pdb.yaml
   - ciliumnetworkpolicy.yaml
-  - ciliumnetworkpolicy-forgejo-postgres.yaml
