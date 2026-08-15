@@ -156,6 +156,9 @@ spec:
           ALLOW_ONLY_EXTERNAL_REGISTRATION: true
           SHOW_REGISTRATION_BUTTON: false
           REQUIRE_SIGNIN_VIEW: true
+          ENABLE_INTERNAL_SIGNIN: false
+          ENABLE_PASSWORD_SIGNIN_FORM: false
+          ENABLE_BASIC_AUTHENTICATION: false
         server:
           DOMAIN: git.apps.mbhome.biz
           ROOT_URL: https://git.apps.mbhome.biz/
