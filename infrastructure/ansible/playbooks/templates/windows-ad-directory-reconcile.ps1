@@ -250,13 +250,20 @@ foreach ($User in $DesiredUsers) {
   }
 
   $Enabled = [bool](Get-JsonProperty $User "enabled" $true)
+  $InitialPassword = [string](Get-JsonProperty $User "password" "")
+  $ResetPassword = [bool](Get-JsonProperty $User "reset_password" $false)
+  $Path = Get-ObjectPath $User ([string]$State.base_dn)
+  $DisplayName = [string](Get-JsonProperty $User "display_name" $Username)
   $EscapedUser = Escape-LdapFilterValue $Username
   $ExistingUser = Get-ADUser -LDAPFilter "(sAMAccountName=$EscapedUser)" -Properties Enabled -ErrorAction SilentlyContinue
+  if ($null -eq $ExistingUser) {
+    $DesiredUserDn = Get-ObjectDn $User "CN" $DisplayName $Path
+    $ExistingUser = Get-ADUser -Identity $DesiredUserDn -Properties Enabled -ErrorAction SilentlyContinue
+  }
 
-  if ($Enabled -and ($null -eq $ExistingUser -or -not [bool]$ExistingUser.Enabled)) {
-    $InitialPassword = [string](Get-JsonProperty $User "password" "")
+  if (($Enabled -and ($null -eq $ExistingUser -or -not [bool]$ExistingUser.Enabled)) -or $ResetPassword) {
     if ([string]::IsNullOrWhiteSpace($InitialPassword)) {
-      throw "User $Username is enabled but no password is defined in infrastructure/ad/directory.local.yaml."
+      throw "User $Username needs a password in infrastructure/ad/directory.local.yaml for creation, enablement, or reset_password."
     }
     Assert-NewUserPasswordPolicy $User $DomainPasswordPolicy
   }
@@ -454,11 +461,17 @@ foreach ($User in $DesiredUsers) {
   $Description = Get-JsonProperty $User "description" $null
   $PasswordNeverExpires = [bool](Get-JsonProperty $User "password_never_expires" $false)
   $MustChangePassword = [bool](Get-JsonProperty $User "must_change_password" $false)
+  $ResetPassword = [bool](Get-JsonProperty $User "reset_password" $false)
   $UidNumber = [int](Get-JsonProperty $User "__desired_uid_number" 0)
   $GidNumber = [int](Get-JsonProperty $User "__desired_gid_number" 0)
 
   $EscapedUser = Escape-LdapFilterValue $Username
-  $Existing = Get-ADUser -LDAPFilter "(sAMAccountName=$EscapedUser)" -Properties GivenName,Surname,DisplayName,EmailAddress,Description,UserPrincipalName,Enabled,PasswordNeverExpires,uidNumber,gidNumber -ErrorAction SilentlyContinue
+  $UserProperties = @("GivenName", "Surname", "DisplayName", "EmailAddress", "Description", "UserPrincipalName", "Enabled", "PasswordNeverExpires", "uidNumber", "gidNumber", "SamAccountName")
+  $Existing = Get-ADUser -LDAPFilter "(sAMAccountName=$EscapedUser)" -Properties $UserProperties -ErrorAction SilentlyContinue
+  if ($null -eq $Existing) {
+    $DesiredUserDn = Get-ObjectDn $User "CN" $DisplayName $Path
+    $Existing = Get-ADUser -Identity $DesiredUserDn -Properties $UserProperties -ErrorAction SilentlyContinue
+  }
 
   if ($null -eq $Existing) {
     if ($Enabled -and [string]::IsNullOrWhiteSpace($InitialPassword)) {
@@ -502,6 +515,7 @@ foreach ($User in $DesiredUsers) {
     $SetParams = @{
       Identity = $Existing.DistinguishedName
     }
+    if ($Existing.SamAccountName -ne $Username) { $SetParams.SamAccountName = $Username }
     if ($Existing.UserPrincipalName -ne $Upn) { $SetParams.UserPrincipalName = $Upn }
     if ($Existing.DisplayName -ne $DisplayName) { $SetParams.DisplayName = $DisplayName }
     if ($null -ne $GivenName -and $Existing.GivenName -ne $GivenName) { $SetParams.GivenName = $GivenName }
@@ -528,10 +542,20 @@ foreach ($User in $DesiredUsers) {
       }
     }
 
+    if ($ResetPassword) {
+      Invoke-DirectoryChange "Reset password for user $Username" {
+        $SecurePassword = ConvertTo-SecureString $InitialPassword -AsPlainText -Force
+        Set-ADAccountPassword -Identity $Existing.DistinguishedName -Reset -NewPassword $SecurePassword
+        if ($MustChangePassword) {
+          Set-ADUser -Identity $Existing.DistinguishedName -ChangePasswordAtLogon $true
+        }
+      }
+    }
+
     if ([bool]$Existing.Enabled -ne $Enabled) {
       if ($Enabled) {
         Invoke-DirectoryChange "Enable user $Username" {
-          if (-not [string]::IsNullOrWhiteSpace($InitialPassword)) {
+          if (-not $ResetPassword -and -not [string]::IsNullOrWhiteSpace($InitialPassword)) {
             $SecurePassword = ConvertTo-SecureString $InitialPassword -AsPlainText -Force
             Set-ADAccountPassword -Identity $Existing.DistinguishedName -Reset -NewPassword $SecurePassword
           }
@@ -546,10 +570,11 @@ foreach ($User in $DesiredUsers) {
   }
 
   foreach ($GroupName in ConvertTo-Array (Get-JsonProperty $User "groups" @())) {
-    $MemberOf = Get-ADPrincipalGroupMembership -Identity $Username | Where-Object { $_.Name -eq $GroupName }
+    $MembershipIdentity = if ($null -ne $Existing) { $Existing.DistinguishedName } else { $Username }
+    $MemberOf = Get-ADPrincipalGroupMembership -Identity $MembershipIdentity | Where-Object { $_.Name -eq $GroupName }
     if ($null -eq $MemberOf) {
       Invoke-DirectoryChange "Add user $Username to group $GroupName" {
-        Add-ADGroupMember -Identity $GroupName -Members $Username
+        Add-ADGroupMember -Identity $GroupName -Members $MembershipIdentity
       }
     }
   }

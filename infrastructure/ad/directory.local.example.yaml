@@ -146,6 +146,10 @@ users:
       - git-users
     enabled: true
     password: CHANGE_ME_INITIAL_PASSWORD
+    # Optional one-time rotation for an existing account. Remove or set false
+    # after a successful apply, because AD password hashes cannot be compared
+    # idempotently by this reconciler.
+    # reset_password: true
     must_change_password: false
     password_never_expires: true
 

@@ -1066,6 +1066,16 @@ windows_domain_controllers:
     windows_ad_safe_mode_password: CHANGE_ME_DSRM
     windows_ad_domain_mode: WinThreshold
     windows_ad_forest_mode: WinThreshold
+    windows_ad_password_policy:
+      complexity_enabled: false
+      reversible_encryption_enabled: false
+      min_password_length: 14
+      password_history_count: 24
+      min_password_age_days: 0
+      max_password_age_days: 0
+      lockout_threshold: 10
+      lockout_duration_minutes: 15
+      lockout_observation_window_minutes: 15
 ```
 
 Then create the initial forest on the primary DC:
@@ -1078,6 +1088,19 @@ The forest playbook promotes `mbhome-ad-01`, creates a new forest, enables DNS,
 uses the requested DSRM password, disables NetBIOS over TCP/IP, and leaves the
 server ready for replica promotion. `WinThreshold` is the newest functional
 level accepted by modern AD DS deployment cmdlets.
+
+The same playbook also manages the default domain password policy. The default
+shown above is intentionally secure but flexible: Windows password complexity is
+disabled so strong passphrases may include a user's name or surname, while the
+domain still requires at least 14 characters, keeps password history, disables
+age-based password expiry, disables reversible encryption, and locks accounts
+after repeated failures. `max_password_age_days: 0` means passwords do not
+expire because of age. On an existing domain, update `windows_ad_password_policy` in
+`inventory/hosts.local.yaml` and rerun:
+
+```bash
+make windows-ad-forest
+```
 
 Then promote the second DC as a replica:
 
@@ -1171,6 +1194,12 @@ The reconciler creates missing OUs, groups, users, service accounts, and
 declared memberships. It does not delete unmanaged AD objects, which keeps early
 homelab iteration safer. Enabled new users and service accounts must include a
 `password` in `directory.local.yaml` so they can be created.
+
+For existing accounts, `password` is not treated as an always-enforced field
+because AD password hashes cannot be compared safely. To intentionally rotate a
+password, set the new `password` and add `reset_password: true` to that user or
+service account, run `make windows-ad-directory-apply`, then remove
+`reset_password` or set it back to `false`.
 
 For Linux/SSSD integration, configure `posix` ranges in
 `directory.local.yaml`. The reconciler allocates the next available values from

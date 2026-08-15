@@ -12,6 +12,21 @@
     _windows_ad_dns_client_servers: >-
       {{ windows_ad_dns_client_servers
          | default([windows_static_ip | default(ansible_host)]) }}
+    _windows_ad_password_policy_defaults:
+      complexity_enabled: false
+      reversible_encryption_enabled: false
+      min_password_length: 14
+      password_history_count: 24
+      min_password_age_days: 0
+      max_password_age_days: 0
+      lockout_threshold: 10
+      lockout_duration_minutes: 15
+      lockout_observation_window_minutes: 15
+    _windows_ad_password_policy: >-
+      {{
+        _windows_ad_password_policy_defaults
+        | combine(windows_ad_password_policy | default({}), recursive=True)
+      }}
 
   tasks:
     - name: Validate AD forest variables
@@ -25,6 +40,13 @@
           - _windows_ad_domain_netbios_name is match('^[A-Za-z0-9]+$')
           - windows_ad_safe_mode_password is defined
           - windows_ad_safe_mode_password | length >= 8
+          - _windows_ad_password_policy.min_password_length | int >= 8
+          - _windows_ad_password_policy.password_history_count | int >= 0
+          - _windows_ad_password_policy.min_password_age_days | int >= 0
+          - _windows_ad_password_policy.max_password_age_days | int >= 0
+          - _windows_ad_password_policy.lockout_threshold | int >= 0
+          - _windows_ad_password_policy.lockout_duration_minutes | int >= 0
+          - _windows_ad_password_policy.lockout_observation_window_minutes | int >= 0
         fail_msg: >-
           Set windows_ad_domain_name and windows_ad_safe_mode_password for the
           windows_domain_controllers group in inventory/hosts.local.yaml. The
@@ -145,6 +167,73 @@
         Write-Output "CHANGED=$Changed"
       register: _windows_ad_dns_client
       changed_when: "'CHANGED=True' in _windows_ad_dns_client.stdout"
+
+    - name: Configure default AD domain password policy
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+
+        Import-Module ActiveDirectory
+
+        $DomainName = "{{ windows_ad_domain_name }}"
+        $Desired = [ordered]@{
+          ComplexityEnabled = [System.Convert]::ToBoolean("{{ _windows_ad_password_policy.complexity_enabled | bool | ternary('true', 'false') }}")
+          ReversibleEncryptionEnabled = [System.Convert]::ToBoolean("{{ _windows_ad_password_policy.reversible_encryption_enabled | bool | ternary('true', 'false') }}")
+          MinPasswordLength = {{ _windows_ad_password_policy.min_password_length | int }}
+          PasswordHistoryCount = {{ _windows_ad_password_policy.password_history_count | int }}
+          MinPasswordAge = New-TimeSpan -Days {{ _windows_ad_password_policy.min_password_age_days | int }}
+          MaxPasswordAge = New-TimeSpan -Days {{ _windows_ad_password_policy.max_password_age_days | int }}
+          LockoutThreshold = {{ _windows_ad_password_policy.lockout_threshold | int }}
+          LockoutDuration = New-TimeSpan -Minutes {{ _windows_ad_password_policy.lockout_duration_minutes | int }}
+          LockoutObservationWindow = New-TimeSpan -Minutes {{ _windows_ad_password_policy.lockout_observation_window_minutes | int }}
+        }
+
+        $Current = Get-ADDefaultDomainPasswordPolicy
+        $SetParams = @{
+          Identity = $DomainName
+        }
+
+        if ([bool]$Current.ComplexityEnabled -ne $Desired.ComplexityEnabled) {
+          $SetParams.ComplexityEnabled = $Desired.ComplexityEnabled
+        }
+        if ([bool]$Current.ReversibleEncryptionEnabled -ne $Desired.ReversibleEncryptionEnabled) {
+          $SetParams.ReversibleEncryptionEnabled = $Desired.ReversibleEncryptionEnabled
+        }
+        if ([int]$Current.MinPasswordLength -ne [int]$Desired.MinPasswordLength) {
+          $SetParams.MinPasswordLength = $Desired.MinPasswordLength
+        }
+        if ([int]$Current.PasswordHistoryCount -ne [int]$Desired.PasswordHistoryCount) {
+          $SetParams.PasswordHistoryCount = $Desired.PasswordHistoryCount
+        }
+        if ([int64]$Current.MinPasswordAge.TotalSeconds -ne [int64]$Desired.MinPasswordAge.TotalSeconds) {
+          $SetParams.MinPasswordAge = $Desired.MinPasswordAge
+        }
+        if ([int64]$Current.MaxPasswordAge.TotalSeconds -ne [int64]$Desired.MaxPasswordAge.TotalSeconds) {
+          $SetParams.MaxPasswordAge = $Desired.MaxPasswordAge
+        }
+        if ([int]$Current.LockoutThreshold -ne [int]$Desired.LockoutThreshold) {
+          $SetParams.LockoutThreshold = $Desired.LockoutThreshold
+        }
+        if ([int64]$Current.LockoutDuration.TotalSeconds -ne [int64]$Desired.LockoutDuration.TotalSeconds) {
+          $SetParams.LockoutDuration = $Desired.LockoutDuration
+        }
+        if ([int64]$Current.LockoutObservationWindow.TotalSeconds -ne [int64]$Desired.LockoutObservationWindow.TotalSeconds) {
+          $SetParams.LockoutObservationWindow = $Desired.LockoutObservationWindow
+        }
+
+        $Changed = $SetParams.Keys.Count -gt 1
+        if ($Changed) {
+          Set-ADDefaultDomainPasswordPolicy @SetParams
+        }
+
+        $Result = Get-ADDefaultDomainPasswordPolicy
+        Write-Output "CHANGED=$Changed"
+        Write-Output "ComplexityEnabled=$($Result.ComplexityEnabled)"
+        Write-Output "MinPasswordLength=$($Result.MinPasswordLength)"
+        Write-Output "PasswordHistoryCount=$($Result.PasswordHistoryCount)"
+        Write-Output "MaxPasswordAge=$($Result.MaxPasswordAge)"
+        Write-Output "LockoutThreshold=$($Result.LockoutThreshold)"
+      register: _windows_ad_password_policy_config
+      changed_when: "'CHANGED=True' in _windows_ad_password_policy_config.stdout"
 
     - name: Confirm AD forest
       ansible.windows.win_shell: |
