@@ -37,7 +37,7 @@ data:
       options: ""
       workdir_parent: /workspace
       valid_volumes: []
-      docker_host: tcp://127.0.0.1:2375
+      docker_host: unix:///var/run/docker/docker.sock
       force_pull: true
       force_rebuild: false
 

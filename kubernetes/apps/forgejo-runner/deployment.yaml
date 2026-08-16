@@ -31,18 +31,16 @@ spec:
           env:
             - name: DOCKER_TLS_CERTDIR
               value: ""
+          command:
+            - dockerd-entrypoint.sh
           args:
-            - --host=tcp://127.0.0.1:2375
-            - --host=unix:///var/run/docker.sock
-            - --tls=false
+            - --host=unix:///var/run/docker/docker.sock
             - --storage-driver=overlay2
-          ports:
-            - name: docker
-              containerPort: 2375
-              protocol: TCP
           volumeMounts:
             - name: docker-data
               mountPath: /var/lib/docker
+            - name: docker-socket
+              mountPath: /var/run/docker
           securityContext:
             privileged: true
             allowPrivilegeEscalation: true
@@ -55,7 +53,7 @@ spec:
             - name: HOME
               value: /data
             - name: DOCKER_HOST
-              value: tcp://127.0.0.1:2375
+              value: unix:///var/run/docker/docker.sock
             - name: FORGEJO_RUNNER_UUID
               valueFrom:
                 secretKeyRef:
@@ -108,6 +106,8 @@ spec:
               mountPath: /workspace
             - name: tmp
               mountPath: /tmp
+            - name: docker-socket
+              mountPath: /var/run/docker
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -127,6 +127,8 @@ spec:
         - name: workspace
           emptyDir: {}
         - name: docker-data
+          emptyDir: {}
+        - name: docker-socket
           emptyDir: {}
         - name: tmp
           emptyDir: {}
