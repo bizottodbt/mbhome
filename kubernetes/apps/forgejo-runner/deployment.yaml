@@ -24,58 +24,6 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        - name: register
-          image: data.forgejo.org/forgejo/runner:12
-          imagePullPolicy: IfNotPresent
-          workingDir: /data
-          env:
-            - name: HOME
-              value: /data
-            - name: FORGEJO_INSTANCE_URL
-              value: https://git.apps.mbhome.biz/
-            - name: RUNNER_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: RUNNER_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: forgejo-runner-registration
-                  key: token
-            - name: RUNNER_LABELS
-              value: docker:docker://docker.io/library/node:22-bookworm,ubuntu-latest:docker://docker.io/library/node:22-bookworm,self-hosted:docker://docker.io/library/node:22-bookworm
-          command:
-            - sh
-            - -ec
-            - |
-              mkdir -p /data/cache /data/host-work /workspace
-              if [ -s /data/.runner ]; then
-                echo "Forgejo runner already registered in /data/.runner"
-                exit 0
-              fi
-              forgejo-runner register \
-                --no-interactive \
-                --instance "$FORGEJO_INSTANCE_URL" \
-                --name "$RUNNER_NAME" \
-                --token "$RUNNER_TOKEN" \
-                --labels "$RUNNER_LABELS"
-          volumeMounts:
-            - name: data
-              mountPath: /data
-            - name: workspace
-              mountPath: /workspace
-            - name: tmp
-              mountPath: /tmp
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
       containers:
         - name: docker
           image: docker:28-dind
@@ -108,18 +56,39 @@ spec:
               value: /data
             - name: DOCKER_HOST
               value: tcp://127.0.0.1:2375
+            - name: FORGEJO_RUNNER_UUID
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-runner-registration
+                  key: uuid
+            - name: FORGEJO_RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: forgejo-runner-registration
+                  key: token
           command:
             - sh
             - -ec
             - |
+              mkdir -p /data/cache /data/host-work /workspace
+              cp /config/config.yaml /data/config.yaml
+              cat >> /data/config.yaml <<EOF
+
+              server:
+                connections:
+                  forgejo:
+                    url: https://git.apps.mbhome.biz/
+                    uuid: ${FORGEJO_RUNNER_UUID}
+                    token: ${FORGEJO_RUNNER_TOKEN}
+              EOF
               sleep 10
-              exec forgejo-runner daemon --config /config/config.yaml
+              exec forgejo-runner daemon --config /data/config.yaml
           readinessProbe:
             exec:
               command:
                 - sh
                 - -ec
-                - test -s /data/.runner
+                - test -s /data/config.yaml
             initialDelaySeconds: 10
             periodSeconds: 20
           resources:

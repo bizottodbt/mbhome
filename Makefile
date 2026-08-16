@@ -848,17 +848,19 @@ forgejo-status: ## Show Forgejo source, release, database, app, route, policy, a
 	$(KUBECTL_ADMIN) -n "$(FORGEJO_NAMESPACE)" get ciliumnetworkpolicy,poddisruptionbudget
 	@curl -Ik https://git.apps.mbhome.biz || true
 
-forgejo-runner-registration-secret: ## Write the Forgejo runner registration token to Vault
+forgejo-runner-registration-secret: ## Write the Forgejo runner UUID/token connection to Vault
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	@test -n "$$FORGEJO_RUNNER_REGISTRATION_TOKEN" || (echo "Export FORGEJO_RUNNER_REGISTRATION_TOKEN before running this target"; exit 1)
+	@test -n "$$FORGEJO_RUNNER_UUID" || (echo "Export FORGEJO_RUNNER_UUID before running this target"; exit 1)
+	@test -n "$$FORGEJO_RUNNER_TOKEN" || (echo "Export FORGEJO_RUNNER_TOKEN before running this target"; exit 1)
 	@echo "Enter a Vault token with enough privilege to write $(VAULT_KV_MOUNT)/apps/$(FORGEJO_RUNNER_NAMESPACE)/registration."
 	$(KUBECTL_ADMIN) -n vault exec -it "$(VAULT_POD)" -- vault login
-	@printf '%s\n' "$$FORGEJO_RUNNER_REGISTRATION_TOKEN" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r token; vault kv put "$(VAULT_KV_MOUNT)/apps/$(FORGEJO_RUNNER_NAMESPACE)/registration" token="$$token"'
+	@printf '%s\n%s\n' "$$FORGEJO_RUNNER_UUID" "$$FORGEJO_RUNNER_TOKEN" | $(KUBECTL_ADMIN) -n vault exec -i "$(VAULT_POD)" -- sh -ec 'IFS= read -r uuid; IFS= read -r token; vault kv put "$(VAULT_KV_MOUNT)/apps/$(FORGEJO_RUNNER_NAMESPACE)/registration" uuid="$$uuid" token="$$token"'
 	$(KUBECTL_ADMIN) -n vault exec "$(VAULT_POD)" -- sh -ec 'rm -f "$$HOME/.vault-token"'
 
 forgejo-runner-required-secrets-check: ## Confirm Forgejo runner secrets have been synced by Vault Secrets Operator
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
-	@$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" get secret forgejo-runner-registration >/dev/null || (echo "Missing $(FORGEJO_RUNNER_NAMESPACE)/forgejo-runner-registration. Run: export FORGEJO_RUNNER_REGISTRATION_TOKEN='...' && make forgejo-runner-registration-secret"; exit 1)
+	@$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" get secret forgejo-runner-registration -o jsonpath='{.data.uuid}' >/dev/null || (echo "Missing $(FORGEJO_RUNNER_NAMESPACE)/forgejo-runner-registration uuid. Run: export FORGEJO_RUNNER_UUID='...' FORGEJO_RUNNER_TOKEN='...' && make forgejo-runner-registration-secret"; exit 1)
+	@$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" get secret forgejo-runner-registration -o jsonpath='{.data.token}' >/dev/null || (echo "Missing $(FORGEJO_RUNNER_NAMESPACE)/forgejo-runner-registration token. Run: export FORGEJO_RUNNER_UUID='...' FORGEJO_RUNNER_TOKEN='...' && make forgejo-runner-registration-secret"; exit 1)
 
 forgejo-runner-status: ## Show Forgejo runner deployment, Vault sync, policy, PVC, and recent logs
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)

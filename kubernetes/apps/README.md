@@ -53,11 +53,13 @@ make flux-reconcile
 make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=forgejo-runner
 ```
 
-Create a runner registration token in Forgejo under
-`Site Administration -> Actions -> Runners`, then store it in Vault:
+Create a runner connection in Forgejo under
+`Site Administration -> Actions -> Runners`, then store the displayed `uuid`
+and `token` in Vault:
 
 ```bash
-export FORGEJO_RUNNER_REGISTRATION_TOKEN='...'
+export FORGEJO_RUNNER_UUID='...'
+export FORGEJO_RUNNER_TOKEN='...'
 make forgejo-runner-registration-secret
 make forgejo-runner-status
 ```

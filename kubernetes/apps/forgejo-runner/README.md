@@ -17,20 +17,21 @@ Enable the namespace Vault role once:
 make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=forgejo-runner
 ```
 
-Create a runner registration token in Forgejo:
+Create a runner connection in Forgejo:
 
 ```text
 Site Administration -> Actions -> Runners -> Create new runner
 ```
 
-Store the registration token in Vault:
+Forgejo displays a `uuid` and confidential `token`. Store both in Vault:
 
 ```bash
-export FORGEJO_RUNNER_REGISTRATION_TOKEN='...'
+export FORGEJO_RUNNER_UUID='...'
+export FORGEJO_RUNNER_TOKEN='...'
 make forgejo-runner-registration-secret
 ```
 
-The token is stored at:
+The connection values are stored at:
 
 ```text
 mbhome/apps/forgejo-runner/registration
