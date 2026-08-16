@@ -22,6 +22,8 @@ cluster itself.
 - HTTPS exposure through the internal Cilium Gateway
 - SSH clone access disabled for the first deployment; use HTTPS clone URLs
 - Dex OIDC login with local password registration disabled
+- Forgejo Actions enabled; jobs are executed by the separate
+  `forgejo-runner` app in its own namespace
 
 ## Bootstrap
 
@@ -112,6 +114,42 @@ https://git.apps.mbhome.biz/user/oauth2/dex/callback
 Forgejo allows external registration only. That means a first-time Dex user can
 be created by logging in with Dex, but the local password registration button is
 not shown.
+
+## Actions
+
+Forgejo Actions is enabled in `app.ini`, with reusable actions resolved from:
+
+```text
+https://data.forgejo.org
+```
+
+The Forgejo server only schedules Actions jobs. The jobs themselves are run by
+the `forgejo-runner` deployment under:
+
+```text
+kubernetes/apps/forgejo-runner/
+```
+
+Bootstrap the runner namespace and registration token with:
+
+```bash
+make flux-reconcile
+make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=forgejo-runner
+
+export FORGEJO_RUNNER_REGISTRATION_TOKEN='...'
+make forgejo-runner-registration-secret
+make forgejo-runner-status
+```
+
+Create the registration token in Forgejo at:
+
+```text
+Site Administration -> Actions -> Runners -> Create new runner
+```
+
+The first runner supports `runs-on: docker`, `runs-on: ubuntu-latest`, and
+`runs-on: self-hosted`. It uses an isolated Docker-in-Docker sidecar, not the
+host Docker socket.
 
 ## AD group access
 

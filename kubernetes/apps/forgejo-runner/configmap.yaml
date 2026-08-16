@@ -1,0 +1,46 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-runner-config
+  namespace: forgejo-runner
+  labels:
+    app.kubernetes.io/name: forgejo-runner
+data:
+  config.yaml: |
+    log:
+      level: info
+
+    runner:
+      file: /data/.runner
+      capacity: 1
+      envs: {}
+      env_file: ""
+      timeout: 3h
+      insecure: false
+      fetch_timeout: 5s
+      fetch_interval: 2s
+      labels:
+        - docker:docker://docker.io/library/node:22-bookworm
+        - ubuntu-latest:docker://docker.io/library/node:22-bookworm
+        - self-hosted:docker://docker.io/library/node:22-bookworm
+
+    cache:
+      enabled: true
+      dir: /data/cache
+      host: ""
+      port: 0
+
+    container:
+      network: ""
+      enable_ipv6: false
+      privileged: false
+      options: ""
+      workdir_parent: /workspace
+      valid_volumes: []
+      docker_host: tcp://127.0.0.1:2375
+      force_pull: true
+      force_rebuild: false
+
+    host:
+      workdir_parent: /data/host-work

@@ -24,7 +24,7 @@ Real apps live beside the smoke test. Current apps:
 
 | App | URL | Notes |
 | --- | --- | --- |
-| Forgejo | `https://git.apps.mbhome.biz` | Internal Git service. PostgreSQL is managed by CloudNativePG, persistent data lives on `nfs-user`, and admin/OAuth/database secrets are synced from Vault. |
+| Forgejo | `https://git.apps.mbhome.biz` | Internal Git service. PostgreSQL is managed by CloudNativePG, persistent data lives on `nfs-user`, Actions is enabled, and admin/OAuth/database secrets are synced from Vault. |
 | ImmichFrame | `https://immichframe.apps.mbhome.biz` | Digital photo frame backed by Immich. The Immich API key is synced from Vault. |
 | LLM | `https://ai.apps.mbhome.biz` | Open WebUI backed by Ollama. The WebUI secret key and OAuth client secret are synced from Vault, and models live in the Ollama PVC. |
 
@@ -44,6 +44,22 @@ make forgejo-admin-secret
 
 export FORGEJO_OAUTH_CLIENT_SECRET="$(openssl rand -hex 32)"
 make forgejo-oauth-secret
+```
+
+Seed the Forgejo runner after the `forgejo-runner` namespace exists:
+
+```bash
+make flux-reconcile
+make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=forgejo-runner
+```
+
+Create a runner registration token in Forgejo under
+`Site Administration -> Actions -> Runners`, then store it in Vault:
+
+```bash
+export FORGEJO_RUNNER_REGISTRATION_TOKEN='...'
+make forgejo-runner-registration-secret
+make forgejo-runner-status
 ```
 
 Seed the ImmichFrame secret before reconciling the app:

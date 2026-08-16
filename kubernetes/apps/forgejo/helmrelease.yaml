@@ -179,3 +179,8 @@ spec:
           TYPE: level
         metrics:
           ENABLED: false
+        actions:
+          ENABLED: true
+          DEFAULT_ACTIONS_URL: https://data.forgejo.org
+          LOG_RETENTION_DAYS: 30
+          ARTIFACT_RETENTION_DAYS: 30
