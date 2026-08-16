@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        mbhome.biz/config-revision: "2026-08-16-docker-capable-runner"
+        mbhome.biz/config-revision: "2026-08-16-job-docker-socket"
       labels:
         app.kubernetes.io/name: forgejo-runner
     spec:

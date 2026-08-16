@@ -14,7 +14,7 @@ data:
     runner:
       capacity: 1
       envs:
-        DOCKER_HOST: unix:///var/run/docker/docker.sock
+        DOCKER_HOST: unix:///var/run/docker.sock
       env_file: ""
       timeout: 3h
       insecure: false

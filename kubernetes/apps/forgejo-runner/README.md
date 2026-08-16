@@ -63,8 +63,10 @@ self-hosted
 Each label currently runs jobs in `ghcr.io/catthehacker/ubuntu:act-22.04`.
 That image is heavier than plain `node`, but it includes the common tools needed
 by GitHub-compatible workflows, including Node.js, Git, and the Docker CLI.
-Docker commands talk to the isolated Docker-in-Docker sidecar through
-`DOCKER_HOST=unix:///var/run/docker/docker.sock`.
+Docker commands inside workflow jobs talk to the isolated Docker-in-Docker
+sidecar through `DOCKER_HOST=unix:///var/run/docker.sock`. The runner itself
+uses `container.docker_host=unix:///var/run/docker/docker.sock` to reach the
+same sidecar from the runner pod.
 
 Example workflow:
 
