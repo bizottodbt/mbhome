@@ -35,6 +35,7 @@ spec:
             - dockerd
           args:
             - --host=unix:///var/run/docker/docker.sock
+            - --group=1000
             - --storage-driver=overlay2
           volumeMounts:
             - name: docker-data
