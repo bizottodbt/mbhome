@@ -24,7 +24,7 @@ Real apps live beside the smoke test. Current apps:
 
 | App | URL | Notes |
 | --- | --- | --- |
-| Forgejo | `https://git.apps.mbhome.biz` | Internal Git service. PostgreSQL is managed by CloudNativePG, persistent data lives on `nfs-user`, Actions is enabled, and admin/OAuth/database secrets are synced from Vault. |
+| Forgejo | `https://git.apps.mbhome.biz` | Internal Git service. SSH clone/push is available on `git.apps.mbhome.biz:2222`, PostgreSQL is managed by CloudNativePG, persistent data lives on `nfs-user`, Actions is enabled, and admin/OAuth/database secrets are synced from Vault. |
 | ImmichFrame | `https://immichframe.apps.mbhome.biz` | Digital photo frame backed by Immich. The Immich API key is synced from Vault. |
 | LLM | `https://ai.apps.mbhome.biz` | Open WebUI backed by Ollama. The WebUI secret key and OAuth client secret are synced from Vault, and models live in the Ollama PVC. |
 

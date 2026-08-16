@@ -20,7 +20,7 @@ cluster itself.
 - PostgreSQL provided by CloudNativePG in the same `forgejo` namespace
   owned by the database layer, also using `nfs-user`
 - HTTPS exposure through the internal Cilium Gateway
-- SSH clone access disabled for the first deployment; use HTTPS clone URLs
+- SSH clone access exposed internally on `git.apps.mbhome.biz:2222`
 - Dex OIDC login with local password registration disabled
 - Forgejo Actions enabled; jobs are executed by the separate
   `forgejo-runner` app in its own namespace
@@ -115,6 +115,21 @@ Forgejo allows external registration only. That means a first-time Dex user can
 be created by logging in with Dex, but the local password registration button is
 not shown.
 
+## SSH clone access
+
+Forgejo SSH is enabled for Git clone, fetch, and push traffic.
+
+```bash
+git clone ssh://git@git.apps.mbhome.biz:2222/<owner>/<repo>.git
+```
+
+The SSH service is exposed by `forgejo/forgejo-ssh-lb`, a Cilium
+`LoadBalancer` service that shares the internal Gateway address
+`10.20.30.200` with HTTP/HTTPS. Cilium LB IPAM allows this because the SSH
+service uses a non-conflicting port, `2222`.
+
+Do not expose this on port `22`; keep host SSH and Git SSH distinct.
+
 ## Actions
 
 Forgejo Actions is enabled in `app.ini`, with reusable actions resolved from:
@@ -130,22 +145,26 @@ the `forgejo-runner` deployment under:
 kubernetes/apps/forgejo-runner/
 ```
 
-Bootstrap the runner namespace and registration token with:
+Bootstrap the runner namespace and runner connection with:
 
 ```bash
 make flux-reconcile
 make vault-app-namespace-bootstrap VAULT_APP_NAMESPACE=forgejo-runner
 
-export FORGEJO_RUNNER_REGISTRATION_TOKEN='...'
+export FORGEJO_RUNNER_UUID='...'
+export FORGEJO_RUNNER_TOKEN='...'
 make forgejo-runner-registration-secret
 make forgejo-runner-status
 ```
 
-Create the registration token in Forgejo at:
+Create the runner connection in Forgejo at:
 
 ```text
 Site Administration -> Actions -> Runners -> Create new runner
 ```
+
+Forgejo displays a `uuid` and confidential `token`; store both in Vault with
+the Make target above.
 
 The first runner supports `runs-on: docker`, `runs-on: ubuntu-latest`, and
 `runs-on: self-hosted`. It uses an isolated Docker-in-Docker sidecar, not the

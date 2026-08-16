@@ -19,6 +19,14 @@ spec:
         - ports:
             - port: "3000"
               protocol: TCP
+    - fromEntities:
+        - host
+        - remote-node
+        - world
+      toPorts:
+        - ports:
+            - port: "2222"
+              protocol: TCP
   egress:
     - toEndpoints:
         - matchLabels:

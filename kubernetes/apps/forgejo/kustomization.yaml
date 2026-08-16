@@ -8,5 +8,6 @@ resources:
   - ocirepository.yaml
   - helmrelease.yaml
   - httproute.yaml
+  - service-ssh-loadbalancer.yaml
   - pdb.yaml
   - ciliumnetworkpolicy.yaml

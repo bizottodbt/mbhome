@@ -8,6 +8,10 @@ metadata:
     app.kubernetes.io/name: internal-gateway
 spec:
   gatewayClassName: cilium
+  infrastructure:
+    annotations:
+      lbipam.cilium.io/sharing-cross-namespace: gateway-system,forgejo
+      lbipam.cilium.io/sharing-key: mbhome-apps-gateway
   addresses:
     - type: IPAddress
       value: "10.20.30.200"
