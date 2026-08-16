@@ -60,10 +60,11 @@ ubuntu-latest
 self-hosted
 ```
 
-Each label currently runs jobs in `docker.io/library/node:22-bookworm`. This is
-good enough for simple private-repo CI and common JavaScript-based actions. For
-heavier GitHub-compatible workflows, replace or add a label that points at a
-larger runner image.
+Each label currently runs jobs in `ghcr.io/catthehacker/ubuntu:act-22.04`.
+That image is heavier than plain `node`, but it includes the common tools needed
+by GitHub-compatible workflows, including Node.js, Git, and the Docker CLI.
+Docker commands talk to the isolated Docker-in-Docker sidecar through
+`DOCKER_HOST=unix:///var/run/docker/docker.sock`.
 
 Example workflow:
 
@@ -76,6 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: node --version
+      - run: docker version
       - run: git --version
 ```
 

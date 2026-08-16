@@ -13,16 +13,17 @@ data:
 
     runner:
       capacity: 1
-      envs: {}
+      envs:
+        DOCKER_HOST: unix:///var/run/docker/docker.sock
       env_file: ""
       timeout: 3h
       insecure: false
       fetch_timeout: 5s
       fetch_interval: 2s
       labels:
-        - docker:docker://docker.io/library/node:22-bookworm
-        - ubuntu-latest:docker://docker.io/library/node:22-bookworm
-        - self-hosted:docker://docker.io/library/node:22-bookworm
+        - docker:docker://ghcr.io/catthehacker/ubuntu:act-22.04
+        - ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-22.04
+        - self-hosted:docker://ghcr.io/catthehacker/ubuntu:act-22.04
 
     cache:
       enabled: true
