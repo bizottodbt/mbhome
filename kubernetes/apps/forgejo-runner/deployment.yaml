@@ -32,7 +32,7 @@ spec:
             - name: DOCKER_TLS_CERTDIR
               value: ""
           command:
-            - dockerd-entrypoint.sh
+            - dockerd
           args:
             - --host=unix:///var/run/docker/docker.sock
             - --storage-driver=overlay2
