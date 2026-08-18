@@ -3,26 +3,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - serviceaccount.yaml
-  - vaultauth.yaml
-  - vaultstaticsecret.yaml
-  - cronjob.yaml
-  - ciliumnetworkpolicy.yaml
-
-configMapGenerator:
-  - name: immich-album-sync-scripts
-    namespace: immich-album-sync
-    files:
-      - sync-script.py=sync-script.py
-      - count-script.py=count-script.py
-  
-  - name: immich-album-sync-settings
-    namespace: immich-album-sync
-    literals:
-      - IMMICH_INSTANCE_URL=https://immich.mbhome.biz/api/
-      - IMMICH_PERSON_NAME=Mikaela Bizotto Trinconi
-      - IMMICH_ALBUM_NAME=Mimi ❤️
-      - IMMICH_CREATED_AFTER=""
-      - IMMICH_SEARCH_QUERY=does not work without it
-      - IMMICH_PAGE_SIZE=1000
-      - IMMICH_BATCH_SIZE=100
+  - gitrepository.yaml
+  - flux-kustomization.yaml
