@@ -1004,6 +1004,7 @@ security-scan-repo: ## Scan this repository for critical/high vulnerabilities, I
 			--scanners vuln,misconfig,secret \
 			--severity "$(SECURITY_TRIVY_SEVERITY)" \
 			--ignore-unfixed \
+			--ignorefile "$(CURDIR)/.trivyignore.yaml" \
 			--skip-files "$(SECURITY_TRIVY_SKIP_FILES)" \
 			--exit-code 1 \
 			"$(CURDIR)"; \
@@ -1015,6 +1016,7 @@ security-scan-repo: ## Scan this repository for critical/high vulnerabilities, I
 			--scanners vuln,misconfig,secret \
 			--severity "$(SECURITY_TRIVY_SEVERITY)" \
 			--ignore-unfixed \
+			--ignorefile /repo/.trivyignore.yaml \
 			--skip-files "$(SECURITY_TRIVY_SKIP_FILES)" \
 			--exit-code 1 \
 			/repo; \

@@ -1,0 +1,16 @@
+---
+misconfigurations:
+  - id: KSV-0014
+    paths:
+      - kubernetes/apps/forgejo-runner/deployment.yaml
+    statement: >
+      The Forgejo runner Docker-in-Docker sidecar needs a writable root
+      filesystem for dockerd runtime state. This exception is limited to the
+      dedicated forgejo-runner namespace and deployment.
+  - id: KSV-0017
+    paths:
+      - kubernetes/apps/forgejo-runner/deployment.yaml
+    statement: >
+      The Forgejo runner Docker-in-Docker sidecar requires privileged mode to
+      run dockerd for image builds. This exception is limited to the dedicated
+      forgejo-runner namespace and deployment.
