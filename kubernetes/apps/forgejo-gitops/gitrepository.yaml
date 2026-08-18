@@ -1,0 +1,17 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: forgejo-apps
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: forgejo-gitops
+spec:
+  interval: 1m
+  timeout: 60s
+  suspend: true
+  url: ssh://git@git.apps.mbhome.biz:2222/denis/mbhome-apps.git
+  ref:
+    branch: main
+  secretRef:
+    name: forgejo-apps-deploy-key

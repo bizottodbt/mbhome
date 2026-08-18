@@ -79,6 +79,18 @@ spec:
             - port: "22"
               protocol: TCP
     - toFQDNs:
+        - matchName: git.apps.mbhome.biz
+      toPorts:
+        - ports:
+            - port: "2222"
+              protocol: TCP
+    - toCIDRSet:
+        - cidr: 10.20.30.200/32
+      toPorts:
+        - ports:
+            - port: "2222"
+              protocol: TCP
+    - toFQDNs:
         # A helm repository should be added here to allow access
         - matchName: github.com
         - matchName: api.github.com

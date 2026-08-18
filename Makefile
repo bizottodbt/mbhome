@@ -65,6 +65,15 @@ FORGEJO_POSTGRES_USER ?= forgejo
 FORGEJO_ADMIN_USERNAME ?= forgejo_admin
 FORGEJO_OAUTH_CLIENT_ID ?= forgejo
 FORGEJO_RUNNER_NAMESPACE ?= forgejo-runner
+FORGEJO_GITOPS_SOURCE_NAME ?= forgejo-apps
+FORGEJO_GITOPS_SECRET_NAME ?= forgejo-apps-deploy-key
+FORGEJO_GITOPS_HOST ?= git.apps.mbhome.biz
+FORGEJO_GITOPS_SSH_PORT ?= 2222
+FORGEJO_GITOPS_REPO_OWNER ?= denis
+FORGEJO_GITOPS_REPO_NAME ?= mbhome-apps
+FORGEJO_GITOPS_REPO_URL ?= ssh://git@$(FORGEJO_GITOPS_HOST):$(FORGEJO_GITOPS_SSH_PORT)/$(FORGEJO_GITOPS_REPO_OWNER)/$(FORGEJO_GITOPS_REPO_NAME).git
+FORGEJO_GITOPS_BRANCH ?= main
+FORGEJO_GITOPS_PATH ?= ./clusters/mbhome
 GRAFANA_ADMIN_USER ?= admin
 VELERO_NAMESPACE ?= velero
 VELERO_S3_CREDENTIALS_SECRET ?= velero-s3-credentials
@@ -126,7 +135,7 @@ SECURITY_TRIVY_SKIP_FILES ?= kubernetes/clusters/mbhome/flux-system/gotk-compone
 TRIVY ?= trivy
 CONTAINER_RUNTIME ?= docker
 
-.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudflared-token-secret cloudflared-required-secrets-check cloudflared-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status llm-status llm-models llm-model-pull open-webui-oauth-secret forgejo-postgres-secret forgejo-config-secret forgejo-admin-secret forgejo-oauth-secret forgejo-required-secrets-check forgejo-status forgejo-runner-registration-secret forgejo-runner-required-secrets-check forgejo-runner-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile security-scan-repo security-scan-cluster-images proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudflared-token-secret cloudflared-required-secrets-check cloudflared-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status llm-status llm-models llm-model-pull open-webui-oauth-secret forgejo-postgres-secret forgejo-config-secret forgejo-admin-secret forgejo-oauth-secret forgejo-required-secrets-check forgejo-status forgejo-runner-registration-secret forgejo-runner-required-secrets-check forgejo-runner-status forgejo-gitops-deploy-key forgejo-gitops-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile security-scan-repo security-scan-cluster-images proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -869,6 +878,28 @@ forgejo-runner-status: ## Show Forgejo runner deployment, Vault sync, policy, PV
 	$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" get secret forgejo-runner-registration -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
 	$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" get ciliumnetworkpolicy,poddisruptionbudget
 	$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" logs deploy/forgejo-runner -c runner --tail=80 || true
+
+forgejo-gitops-deploy-key: ## Create/update the Flux deploy-key Secret for the Forgejo-hosted apps repo
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@tmpdir="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmpdir"' EXIT; \
+	ssh-keygen -q -t ed25519 -N "" -C "flux-$(FORGEJO_GITOPS_SOURCE_NAME)@$(TALOS_CLUSTER_NAME)" -f "$$tmpdir/identity"; \
+	$(FLUX_ADMIN) create secret git "$(FORGEJO_GITOPS_SECRET_NAME)" \
+		--namespace=flux-system \
+		--url="$(FORGEJO_GITOPS_REPO_URL)" \
+		--private-key-file="$$tmpdir/identity"; \
+	echo ""; \
+	echo "Add this public key to Forgejo as a read-only deploy key for $(FORGEJO_GITOPS_REPO_OWNER)/$(FORGEJO_GITOPS_REPO_NAME):"; \
+	echo ""; \
+	sed 's/^/  /' "$$tmpdir/identity.pub"; \
+	echo ""; \
+	echo "Then set suspend: false in kubernetes/apps/forgejo-gitops/gitrepository.yaml and kustomization-forgejo-apps.yaml, commit, push, and run make flux-reconcile."
+
+forgejo-gitops-status: ## Show Flux state for the Forgejo-hosted apps source
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	$(KUBECTL_ADMIN) -n flux-system get secret "$(FORGEJO_GITOPS_SECRET_NAME)" -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
+	$(FLUX_ADMIN) get sources git "$(FORGEJO_GITOPS_SOURCE_NAME)" || true
+	$(FLUX_ADMIN) get kustomizations "$(FORGEJO_GITOPS_SOURCE_NAME)" || true
 
 dex-postgres-secret: ## Create/update the Dex Postgres application owner secret from DEX_POSTGRES_PASSWORD
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)

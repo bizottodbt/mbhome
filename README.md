@@ -1708,6 +1708,15 @@ committed platform layers in order:
 - `identity`: Dex and Kubernetes OIDC RBAC
 - `apps`: application workloads
 
+The apps layer also creates an optional suspended `forgejo-apps` Flux source for
+custom manifests hosted in the in-cluster Forgejo instance. Keep the platform
+repo itself outside the cluster for recovery, and use Forgejo-hosted GitOps only
+for second-wave custom apps. See:
+
+```text
+kubernetes/apps/forgejo-gitops/
+```
+
 Check Flux reconciliation:
 
 ```bash

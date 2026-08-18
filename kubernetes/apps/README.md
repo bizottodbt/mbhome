@@ -25,6 +25,7 @@ Real apps live beside the smoke test. Current apps:
 | App | URL | Notes |
 | --- | --- | --- |
 | Forgejo | `https://git.apps.mbhome.biz` | Internal Git service. SSH clone/push is available on `git.apps.mbhome.biz:2222`, PostgreSQL is managed by CloudNativePG, persistent data lives on `nfs-user`, Actions is enabled, and admin/OAuth/database secrets are synced from Vault. |
+| Forgejo GitOps | n/a | Suspended Flux source for syncing extra app manifests from a Forgejo-hosted repo during the apps phase. See `kubernetes/apps/forgejo-gitops/`. |
 | ImmichFrame | `https://immichframe.apps.mbhome.biz` | Digital photo frame backed by Immich. The Immich API key is synced from Vault. |
 | LLM | `https://ai.apps.mbhome.biz` | Open WebUI backed by Ollama. The WebUI secret key and OAuth client secret are synced from Vault, and models live in the Ollama PVC. |
 
@@ -62,6 +63,21 @@ export FORGEJO_RUNNER_UUID='...'
 export FORGEJO_RUNNER_TOKEN='...'
 make forgejo-runner-registration-secret
 make forgejo-runner-status
+```
+
+Enable the optional Forgejo-hosted GitOps source after Forgejo is healthy:
+
+```bash
+make forgejo-gitops-deploy-key
+```
+
+Add the printed public key as a read-only deploy key in the Forgejo repo, set
+`suspend: false` in `kubernetes/apps/forgejo-gitops/gitrepository.yaml` and
+`kubernetes/apps/forgejo-gitops/kustomization-forgejo-apps.yaml`, then run:
+
+```bash
+make flux-reconcile
+make forgejo-gitops-status
 ```
 
 Seed the ImmichFrame secret before reconciling the app:

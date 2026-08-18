@@ -27,6 +27,14 @@ spec:
         - ports:
             - port: "2222"
               protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: flux-system
+            k8s:app: source-controller
+      toPorts:
+        - ports:
+            - port: "2222"
+              protocol: TCP
   egress:
     - toEndpoints:
         - matchLabels:
