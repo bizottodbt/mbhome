@@ -65,15 +65,14 @@ FORGEJO_POSTGRES_USER ?= forgejo
 FORGEJO_ADMIN_USERNAME ?= forgejo_admin
 FORGEJO_OAUTH_CLIENT_ID ?= forgejo
 FORGEJO_RUNNER_NAMESPACE ?= forgejo-runner
-FORGEJO_GITOPS_SOURCE_NAME ?= forgejo-apps
-FORGEJO_GITOPS_SECRET_NAME ?= forgejo-apps-deploy-key
+FORGEJO_GITOPS_APP ?=
+FORGEJO_GITOPS_SOURCE_NAME ?= $(FORGEJO_GITOPS_APP)
+FORGEJO_GITOPS_SECRET_NAME ?= $(FORGEJO_GITOPS_SOURCE_NAME)-deploy-key
 FORGEJO_GITOPS_HOST ?= git.apps.mbhome.biz
 FORGEJO_GITOPS_SSH_PORT ?= 2222
 FORGEJO_GITOPS_REPO_OWNER ?= denis
-FORGEJO_GITOPS_REPO_NAME ?= mbhome-apps
+FORGEJO_GITOPS_REPO_NAME ?= $(FORGEJO_GITOPS_SOURCE_NAME)
 FORGEJO_GITOPS_REPO_URL ?= ssh://git@$(FORGEJO_GITOPS_HOST):$(FORGEJO_GITOPS_SSH_PORT)/$(FORGEJO_GITOPS_REPO_OWNER)/$(FORGEJO_GITOPS_REPO_NAME).git
-FORGEJO_GITOPS_BRANCH ?= main
-FORGEJO_GITOPS_PATH ?= ./clusters/mbhome
 GRAFANA_ADMIN_USER ?= admin
 VELERO_NAMESPACE ?= velero
 VELERO_S3_CREDENTIALS_SECRET ?= velero-s3-credentials
@@ -879,8 +878,9 @@ forgejo-runner-status: ## Show Forgejo runner deployment, Vault sync, policy, PV
 	$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" get ciliumnetworkpolicy,poddisruptionbudget
 	$(KUBECTL_ADMIN) -n "$(FORGEJO_RUNNER_NAMESPACE)" logs deploy/forgejo-runner -c runner --tail=80 || true
 
-forgejo-gitops-deploy-key: ## Create/update the Flux deploy-key Secret for the Forgejo-hosted apps repo
+forgejo-gitops-deploy-key: ## Create/update the Flux deploy-key Secret for one Forgejo-hosted app repo
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$(FORGEJO_GITOPS_SOURCE_NAME)" || (echo "Usage: make forgejo-gitops-deploy-key FORGEJO_GITOPS_APP=<app-name>"; exit 1)
 	@tmpdir="$$(mktemp -d)"; \
 	trap 'rm -rf "$$tmpdir"' EXIT; \
 	ssh-keygen -q -t ed25519 -N "" -C "flux-$(FORGEJO_GITOPS_SOURCE_NAME)@$(TALOS_CLUSTER_NAME)" -f "$$tmpdir/identity"; \
@@ -893,10 +893,11 @@ forgejo-gitops-deploy-key: ## Create/update the Flux deploy-key Secret for the F
 	echo ""; \
 	sed 's/^/  /' "$$tmpdir/identity.pub"; \
 	echo ""; \
-	echo "Then set suspend: false in kubernetes/apps/forgejo-gitops/gitrepository.yaml and kustomization-forgejo-apps.yaml, commit, push, and run make flux-reconcile."
+	echo "Then set suspend: false in kubernetes/apps/$(FORGEJO_GITOPS_SOURCE_NAME)/gitrepository.yaml and flux-kustomization.yaml when you are ready to enable this source."
 
-forgejo-gitops-status: ## Show Flux state for the Forgejo-hosted apps source
+forgejo-gitops-status: ## Show Flux state for one Forgejo-hosted app source
 	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$(FORGEJO_GITOPS_SOURCE_NAME)" || (echo "Usage: make forgejo-gitops-status FORGEJO_GITOPS_APP=<app-name>"; exit 1)
 	$(KUBECTL_ADMIN) -n flux-system get secret "$(FORGEJO_GITOPS_SECRET_NAME)" -o custom-columns='NAME:.metadata.name,TYPE:.type' || true
 	$(FLUX_ADMIN) get sources git "$(FORGEJO_GITOPS_SOURCE_NAME)" || true
 	$(FLUX_ADMIN) get kustomizations "$(FORGEJO_GITOPS_SOURCE_NAME)" || true
