@@ -36,6 +36,8 @@ The values use:
 - KubePrism on `localhost:7445`
 - Talos cgroup host root at `/sys/fs/cgroup`
 - Cilium capabilities without `SYS_MODULE`
+- Two Cilium operator replicas with explicit resource requests
+- `KUBE_FEATURE_WatchListClient=false` for the Cilium operator
 
 Flux reconciles the Cilium LB IPAM pool and L2 announcement policy in this
 directory. The initial pool is `10.20.30.200-10.20.30.209`, with the internal
@@ -57,5 +59,14 @@ make cilium-hubble-status
 The UI is internal-only and does not add application-level authentication by
 itself. Keep it on the trusted LAN path, or place it behind an auth layer later.
 
-Keep `operator.replicas` at `1` for the initial single-control-plane cluster.
-Raise it after adding more control-plane nodes.
+The Cilium operator runs more than one replica now that the cluster has multiple
+control-plane nodes. The operator is lightweight, but it owns Gateway API
+reconciliation, LB IPAM, identity garbage collection, and Cilium policy
+validation. If the Gateway controller stops reconciling while the pod still
+appears healthy, new `HTTPRoute` objects may stay without status and Envoy will
+return `404` until the operator is restarted.
+
+The operator also disables Kubernetes client-go `WatchListClient`. Kubernetes
+1.35+ enables this client-side feature by default, and the cluster has seen
+Gateway controller cache sync timeouts after operator restarts. Traditional
+List+Watch is less fancy, but steadier for this small homelab control plane.

@@ -76,7 +76,20 @@ securityContext:
       - SYS_RESOURCE
 
 operator:
-  replicas: 1
+  replicas: 2
+  extraEnv:
+    # Kubernetes 1.35+ enables client-go WatchListClient by default. Keep the
+    # operator on traditional List+Watch because Cilium Gateway controller cache
+    # sync has twice wedged after operator restarts on this cluster.
+    - name: KUBE_FEATURE_WatchListClient
+      value: "false"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+      cpu: 1000m
   podDisruptionBudget:
     enabled: true
     maxUnavailable: 1
