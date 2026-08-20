@@ -48,7 +48,7 @@ spec:
                 value:
                   type: RuntimeDefault
   values:
-    replicaCount: 0
+    replicaCount: 1
     strategy:
       type: Recreate
 
