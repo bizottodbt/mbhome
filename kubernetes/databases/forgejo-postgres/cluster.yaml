@@ -7,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/name: forgejo-postgres
 spec:
-  instances: 2
+  instances: 1
   bootstrap:
     initdb:
       database: forgejo
