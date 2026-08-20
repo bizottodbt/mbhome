@@ -15,7 +15,7 @@ spec:
       secret:
         name: forgejo-postgres-app
   storage:
-    storageClass: nfs-user
+    storageClass: nfs-cache
     size: 10Gi
   affinity:
     enablePodAntiAffinity: true
