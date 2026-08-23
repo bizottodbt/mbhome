@@ -1,0 +1,25 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: forgejo-postgres-bootstrap
+  namespace: forgejo
+  labels:
+    app.kubernetes.io/name: forgejo-postgres
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: cloudnative-pg
+      cnpg.io/cluster: forgejo-postgres
+      cnpg.io/podRole: instance
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: forgejo
+            k8s:io.cilium.k8s.policy.serviceaccount: forgejo-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP

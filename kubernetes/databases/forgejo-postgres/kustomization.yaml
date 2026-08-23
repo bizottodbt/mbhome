@@ -6,4 +6,5 @@ resources:
   - vaultauth.yaml
   - vaultstaticsecret-postgres.yaml
   - ciliumnetworkpolicy.yaml
+  - ciliumnetworkpolicy-bootstrap.yaml
   - cluster.yaml
