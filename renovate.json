@@ -78,6 +78,13 @@
       ]
     },
     {
+      "description": "Keep ansible-core within the range supported by kolla-ansible 22.x.",
+      "matchPackageNames": [
+        "ansible-core"
+      ],
+      "allowedVersions": ">=2.20,<2.21"
+    },
+    {
       "description": "Treat pre-Flux bootstrap tool updates as explicit infrastructure changes.",
       "matchManagers": [
         "custom.regex"
