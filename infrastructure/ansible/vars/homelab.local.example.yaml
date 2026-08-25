@@ -9,7 +9,10 @@ homelab_dns: 192.0.2.1
 homelab_openstack_vm_ip: 192.0.2.10
 homelab_openstack_vm_mac: "52:54:00:00:00:0a"
 homelab_openstack_vm_mac2: "52:54:00:00:00:0b"
+homelab_openstack_vm_provisioning_bridge: br0.30
+homelab_openstack_vm_provisioning_ip: 192.0.2.10
 
 homelab_provisioning_cidr: 192.0.2.0/24
+homelab_provisioning_gateway: 192.0.2.10
 homelab_ironic_dhcp_pool_start: 192.0.2.100
 homelab_ironic_dhcp_pool_end: 192.0.2.200

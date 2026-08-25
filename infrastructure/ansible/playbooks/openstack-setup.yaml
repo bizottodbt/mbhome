@@ -34,7 +34,7 @@
     subnet_cidr: "{{ homelab_provisioning_cidr | default('192.0.2.0/24') }}"
     dhcp_pool_start: "{{ homelab_ironic_dhcp_pool_start | default('192.0.2.100') }}"
     dhcp_pool_end: "{{ homelab_ironic_dhcp_pool_end | default('192.0.2.200') }}"
-    gateway: "{{ homelab_gateway | default('192.0.2.1') }}"
+    gateway: "{{ homelab_provisioning_gateway | default(homelab_gateway | default('192.0.2.1')) }}"
 
   module_defaults:
     group/openstack.cloud.openstack:
@@ -131,6 +131,19 @@
         shared: true
         provider_network_type: flat
         provider_physical_network: physnet1
+
+    - name: Look up existing provisioning subnet
+      openstack.cloud.subnets_info:
+        name: "{{ provisioning_network }}-subnet"
+      register: existing_provisioning_subnet
+
+    - name: Remove provisioning subnet when CIDR changed
+      openstack.cloud.subnet:
+        name: "{{ provisioning_network }}-subnet"
+        state: absent
+      when:
+        - existing_provisioning_subnet.subnets | length > 0
+        - existing_provisioning_subnet.subnets[0].cidr != subnet_cidr
 
     - name: Create provisioning subnet (no Neutron DHCP — Ironic dnsmasq handles it)
       openstack.cloud.subnet:

@@ -54,6 +54,9 @@ all:
       vars:
         proxmox_dns_servers:
           - 192.0.2.1
+        proxmox_ntp_servers:
+          - 192.0.2.1
+        proxmox_full_upgrade_enabled: true
         proxmox_cluster_name: mbhome
         proxmox_cluster_primary: mbhome-proxmox-01
         proxmox_cluster_link_address_var: ansible_host

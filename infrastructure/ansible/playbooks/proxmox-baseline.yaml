@@ -321,6 +321,29 @@
           {% endfor %}
       when: proxmox_dns_servers | default([]) | length > 0
 
+    - name: Read controller epoch for initial clock bootstrap
+      ansible.builtin.set_fact:
+        _proxmox_controller_epoch: "{{ lookup('ansible.builtin.pipe', 'date -u +%s') }}"
+
+    - name: Read current Proxmox node epoch
+      ansible.builtin.command:
+        argv:
+          - date
+          - -u
+          - "+%s"
+      register: _proxmox_node_epoch
+      changed_when: false
+
+    - name: Bootstrap Proxmox node clock from controller when drift is large
+      ansible.builtin.command:
+        argv:
+          - date
+          - -u
+          - -s
+          - "@{{ _proxmox_controller_epoch }}"
+      changed_when: true
+      when: ((_proxmox_controller_epoch | int) - (_proxmox_node_epoch.stdout | int)) | abs > 300
+
     - name: Ensure Debian package repositories are available
       ansible.builtin.copy:
         dest: /etc/apt/sources.list.d/debian.sources
@@ -351,6 +374,35 @@
         - /etc/apt/sources.list.d/.list
         - /etc/apt/sources.list.d/pve-enterprise.sources
 
+    - name: Refresh apt metadata before package operations
+      ansible.builtin.command:
+        argv:
+          - apt-get
+          - -o
+          - APT::Update::Error-Mode=any
+          - update
+      register: _proxmox_apt_update
+      changed_when: false
+      failed_when: >-
+        _proxmox_apt_update.rc != 0 or
+        'Failed to fetch' in ((_proxmox_apt_update.stdout | default('')) ~ (_proxmox_apt_update.stderr | default('')))
+
+    - name: Full-upgrade Proxmox packages
+      ansible.builtin.command:
+        argv:
+          - apt-get
+          - -o
+          - Dpkg::Options::=--force-confdef
+          - -o
+          - Dpkg::Options::=--force-confold
+          - full-upgrade
+          - -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      register: _proxmox_full_upgrade
+      changed_when: "'0 upgraded, 0 newly installed' not in (_proxmox_full_upgrade.stdout | default(''))"
+      when: proxmox_full_upgrade_enabled | default(true) | bool
+
     - name: Build Proxmox baseline package list
       ansible.builtin.set_fact:
         _proxmox_baseline_packages: >-
@@ -373,6 +425,7 @@
               'traceroute',
               'wget'
             ]
+            + (['systemd-timesyncd'] if (proxmox_ntp_servers | default([]) | length > 0) else [])
             + (['sudo'] if (proxmox_admin_users | default([]) | length > 0) else [])
           }}
 
@@ -398,25 +451,40 @@
             | list
           }}
 
-    - name: Refresh apt metadata before installing baseline packages
-      ansible.builtin.command:
-        argv:
-          - apt-get
-          - -o
-          - APT::Update::Error-Mode=any
-          - update
-      register: _proxmox_apt_update
-      changed_when: false
-      failed_when: >-
-        _proxmox_apt_update.rc != 0 or
-        'Failed to fetch' in ((_proxmox_apt_update.stdout | default('')) ~ (_proxmox_apt_update.stderr | default('')))
-      when: _proxmox_missing_packages | length > 0
-
     - name: Install Proxmox baseline packages
       ansible.builtin.command:
         argv: "{{ ['apt-get', 'install', '-y'] + _proxmox_missing_packages }}"
       changed_when: true
       when: _proxmox_missing_packages | length > 0
+
+    - name: Ensure systemd-timesyncd config directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/timesyncd.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: proxmox_ntp_servers | default([]) | length > 0
+
+    - name: Configure Proxmox NTP servers
+      ansible.builtin.copy:
+        dest: /etc/systemd/timesyncd.conf.d/mbhome.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible.
+          [Time]
+          NTP={{ proxmox_ntp_servers | default([]) | join(' ') }}
+      when: proxmox_ntp_servers | default([]) | length > 0
+      notify: Restart systemd-timesyncd
+
+    - name: Ensure systemd-timesyncd is enabled
+      ansible.builtin.systemd:
+        name: systemd-timesyncd
+        enabled: true
+        state: started
+      when: proxmox_ntp_servers | default([]) | length > 0
 
     - name: Configure Proxmox storage content types
       ansible.builtin.command:
@@ -558,3 +626,8 @@
     - name: Update grub
       ansible.builtin.command: update-grub
       changed_when: true
+
+    - name: Restart systemd-timesyncd
+      ansible.builtin.systemd:
+        name: systemd-timesyncd
+        state: restarted

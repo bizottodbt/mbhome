@@ -237,6 +237,81 @@ This playbook (idempotent):
 
 If `make openstack-setup` recreates the deploy kernel or initramfs, the Glance image IDs change. Re-run `make ironic-set-deploy-images NODE=<node>` for any existing node that has explicit `deploy_kernel` / `deploy_ramdisk` driver-info.
 
+### Provisioning DHCP stability
+
+PXE firmware, iPXE, and the Linux-based IPA ramdisk can use different DHCP
+client identifiers even when they boot from the same NIC MAC address. If dnsmasq
+honors those client identifiers, one physical node can receive multiple leases
+during a single deploy. Ironic then keeps polling the stale IPA address and the
+deploy can fail with:
+
+```text
+Failed to connect to the agent ... No route to host
+```
+
+The local dnsmasq override at
+`infrastructure/kolla-ansible/config/ironic/ironic-dnsmasq.conf`, mirrored by
+[`infrastructure/kolla-ansible/config/ironic/ironic-dnsmasq.example.conf`](infrastructure/kolla-ansible/config/ironic/ironic-dnsmasq.example.conf),
+sets:
+
+```text
+dhcp-ignore-clid
+dhcp-authoritative
+```
+
+This makes dnsmasq key provisioning leases by MAC address, keeping the IPA agent
+IP stable across PXE, iPXE, and the IPA operating system. The provisioning DHCP
+lease is also set to `1h` so a large image write does not renew every few
+minutes.
+
+### Provisioning network NTP
+
+IPA must have a sane clock before Ironic connects back to the agent on port
+`9999`. If the bare-metal console shows an old date, Ironic can fail cleaning
+or deploy with an agent certificate error such as:
+
+```text
+SSLCertVerificationError: certificate verify failed: certificate has expired
+```
+
+The OpenStack VM serves NTP on the provisioning bridge. Configure or refresh it
+with:
+
+```bash
+make openstack-provisioning-ntp
+```
+
+Verify that chrony is running and listening on the provisioning IP:
+
+```bash
+ssh openstack 'chronyc tracking || true; sudo ss -lunp | grep ":123" || true'
+```
+
+The Ironic config override adds `ipa-ntp-server=<openstack-provisioning-ip>` to
+the IPA kernel args. After changing the provisioning IP or Ironic config, apply
+it and regenerate the node boot config:
+
+```bash
+ANSIBLE_BECOME_TIMEOUT=60 make kolla-reconfigure TAGS=ironic
+
+openstack baremetal node abort mbhome-proxmox-01 || true
+openstack baremetal node manage mbhome-proxmox-01
+openstack baremetal node provide mbhome-proxmox-01
+```
+
+Check the active httpboot files before retrying:
+
+```bash
+ssh openstack 'sudo grep -R "ipa-ntp-server\|ipa-api-url" -n /var/lib/docker/volumes/ironic/_data/httpboot 2>/dev/null'
+```
+
+Expected shape:
+
+```text
+ipa-ntp-server=<openstack-provisioning-ip>
+ipa-api-url=http://<openstack-management-ip>:6385
+```
+
 ### Driver choice: IPMI vs Redfish
 
 `ipmi` is the proven baseline and is enough for deployment. It supports the critical interfaces Ironic needs: power control, boot device management, PXE boot, deploy, networking, and storage. `openstack baremetal node validate` will still show optional interfaces such as `bios`, `console`, `firmware`, `inspect`, `raid`, and `rescue` as `False`; that is expected for the `ipmi` driver.
@@ -498,6 +573,11 @@ Run the baseline for one deployed node:
 ```bash
 make proxmox-baseline LIMIT=mbhome-proxmox-01
 ```
+
+The baseline first bootstraps the node clock from the Ansible controller if it
+is badly skewed, refreshes apt metadata, runs `apt-get full-upgrade -y`, then
+installs any missing baseline packages. Set `proxmox_full_upgrade_enabled:
+false` in inventory if you need a config-only run during a maintenance window.
 
 For the 10 GbE storage network, prefer a Proxmox bridge such as `vmbr90` instead
 of putting the IP directly on the physical NIC. The physical NIC becomes a

@@ -33,6 +33,7 @@ packages:
   - open-iscsi      # required by Ironic agent
   - lvm2            # required by Ironic agent for cleaning
   - e2fsprogs       # formats the persistent OpenStack data disk
+  - chrony          # serves NTP to IPA on the provisioning VLAN
 
 write_files:
   - path: /etc/hosts
@@ -50,6 +51,17 @@ write_files:
     content: |
       net.ipv6.conf.all.disable_ipv6 = 1
       net.ipv6.conf.default.disable_ipv6 = 1
+  - path: /etc/chrony/conf.d/mbhome-provisioning.conf
+    permissions: "0644"
+    content: |
+      # Managed by mbhome cloud-init.
+      # Serve time to IPA on the isolated provisioning network.
+      allow {{ homelab_provisioning_cidr | default('192.0.2.0/24') }}
+      bindaddress {{ vm_provisioning_ip }}
+
+      # Keep serving a sane local time source even if upstream NTP is
+      # temporarily unavailable during bare-metal provisioning.
+      local stratum 10
 
 # ── Services ─────────────────────────────────────────────────────────────────
 bootcmd:
@@ -112,6 +124,7 @@ runcmd:
     systemctl reload ssh || systemctl reload sshd || true
   - systemctl enable --now qemu-guest-agent
   - systemctl enable open-iscsi
+  - systemctl enable --now chrony
 
 final_message: |
   openstack VM cloud-init complete after $UPTIME seconds.

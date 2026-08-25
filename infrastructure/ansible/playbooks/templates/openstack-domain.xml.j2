@@ -1,5 +1,8 @@
 <domain type='kvm'>
   <name>{{ vm_name }}</name>
+{% if _vm_existing_uuid is defined and (_vm_existing_uuid.stdout | default('') | length) > 0 %}
+  <uuid>{{ _vm_existing_uuid.stdout }}</uuid>
+{% endif %}
   <description>OpenStack (Kolla-Ansible) node — managed by Ansible (openstack-vm.yaml). Do not edit in Unraid GUI.</description>
   <metadata>
     <vmtemplate xmlns="unraid" name="OpenStack" icon="debian.png" os="linux"/>
@@ -81,10 +84,10 @@
       <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
     </interface>
 
-    <!-- Neutron external NIC (enp4s0) — Neutron/linuxbridge takes this over for provisioning -->
+    <!-- Neutron provisioning NIC (enp0s4) — Ironic/dnsmasq/PXE live on this VLAN-backed bridge -->
     <interface type='bridge'>
       <mac address='{{ vm_mac2 }}'/>
-      <source bridge='{{ vm_bridge }}'/>
+      <source bridge='{{ vm_provisioning_bridge }}'/>
       <model type='virtio-net'/>
       <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
     </interface>

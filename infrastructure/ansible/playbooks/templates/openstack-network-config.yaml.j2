@@ -15,3 +15,13 @@ ethernets:
     dhcp6: false
     accept-ra: false
     link-local: []
+  eth1:
+    match:
+      macaddress: "{{ vm_mac2 }}"
+    set-name: enp0s4
+    addresses:
+      - "{{ vm_provisioning_ip }}/24"
+    dhcp4: false
+    dhcp6: false
+    accept-ra: false
+    link-local: []

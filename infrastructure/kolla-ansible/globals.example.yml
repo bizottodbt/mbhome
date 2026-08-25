@@ -18,8 +18,7 @@ docker_namespace: "openstack.kolla"
 # TODO: verify these interface names after first boot of the openstack VM
 # Run `ip link show` on the VM to confirm.
 network_interface: "enp0s3"               # management + API network (192.0.2.10)
-neutron_external_interface: "enp0s4"      # dedicated second NIC for Neutron external bridge no IP needed
-                                          # Neutron/linuxbridge takes this over; no IP needed on it
+neutron_external_interface: "enp0s4"      # dedicated second NIC for provisioning/external bridge; no IP directly on it after Neutron takes over
 kolla_internal_vip_address: "192.0.2.10"
 
 # Single-node deployment — no HA, no HAProxy, no ProxySQL needed
@@ -53,15 +52,21 @@ enable_trove: "no"
 enable_zun: "no"
 
 # ── Neutron ───────────────────────────────────────────────────────────────────
-neutron_plugin_agent: "linuxbridge"
+neutron_plugin_agent: "openvswitch"
+neutron_bridge_name: "br-ex"
 
 # ── Ironic ────────────────────────────────────────────────────────────────────
-ironic_dnsmasq_interface: "{{ network_interface }}"
+ironic_dnsmasq_interface: "br-ex"
+ironic_http_interface: "br-ex"
+ironic_tftp_interface: "br-ex"
+ironic_ntp_server: "192.0.2.10"
 ironic_cleaning_network: "provisioning-net"
 ironic_provisioning_network: "provisioning-net"
+ironic_dnsmasq_dhcp_default_lease_time: "1h"
 ironic_dnsmasq_dhcp_ranges:
   - range: "192.0.2.100,192.0.2.200,255.255.255.0"
-    routers: "192.0.2.1"
+    routers: "192.0.2.10"
+    ntp_server: "192.0.2.10"
 
 # ── Glance ────────────────────────────────────────────────────────────────────
 # Store images on local filesystem (no Ceph/Swift)

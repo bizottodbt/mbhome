@@ -39,6 +39,8 @@ all:
       vars:
         proxmox_dns_search: "{{ homelab_dns_search | default('lan') }}"
         proxmox_dns_servers: []
+        proxmox_ntp_servers: "{{ proxmox_dns_servers | default([]) }}"
+        proxmox_full_upgrade_enabled: true
         proxmox_nfs_mounts:
           # Enable in inventory/hosts.local.yaml after the Unraid export exists.
           - path: /mnt/proxmox-vms

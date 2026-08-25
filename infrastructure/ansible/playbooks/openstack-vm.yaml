@@ -5,7 +5,7 @@
 #
 # This playbook is IDEMPOTENT:
 #   running  → exits immediately, nothing to do
-#   shut off → virsh start only, no reprovisioning
+#   shut off → refresh libvirt XML, then virsh start; no disk/cloud-init reprovisioning
 #   missing  → full provision: disk download → cloud-init ISO → define → start
 #
 # Usage (from repo root):
@@ -38,6 +38,8 @@
     vm_mac:     "{{ homelab_openstack_vm_mac | default('52:54:00:00:00:0a') }}"   # management NIC — do not change after first deploy
     vm_mac2:    "{{ homelab_openstack_vm_mac2 | default('52:54:00:00:00:0b') }}"  # Neutron external NIC — do not change after first deploy
     vm_bridge:  br0
+    vm_provisioning_bridge: "{{ homelab_openstack_vm_provisioning_bridge | default('br0.30') }}"
+    vm_provisioning_ip: "{{ homelab_openstack_vm_provisioning_ip | default('192.0.2.10') }}"
 
     # ── Resources ────────────────────────────────────────────────────────────
     vm_memory_kib: 16777216   # 16 GiB — Kolla-Ansible minimum
@@ -94,8 +96,16 @@
 
     - name: Notice — VM is shut off, will start without reprovisioning
       ansible.builtin.debug:
-        msg: "{{ vm_name }} is defined in libvirt but shut off — skipping provision, starting VM only."
+        msg: >-
+          {{ vm_name }} is defined in libvirt but shut off — skipping disk/cloud-init
+          provisioning, refreshing VM definition, then starting VM.
       when: _vm_shutoff | bool
+
+    - name: Read existing VM UUID for libvirt redefine
+      ansible.builtin.command: virsh domuuid {{ vm_name }}
+      register: _vm_existing_uuid
+      changed_when: false
+      when: not (_vm_missing | bool)
 
     # ── 1. Disk image (full-provision path only) ──────────────────────────────
     - name: Ensure VM domain directory exists
@@ -194,13 +204,13 @@
         src:  templates/openstack-domain.xml.j2
         dest: /tmp/{{ vm_name }}-domain.xml
         mode: "0644"
-      when: _vm_missing | bool
+      when: _vm_missing | bool or _vm_shutoff | bool
 
     - name: Define VM in libvirt
       ansible.builtin.command: virsh define /tmp/{{ vm_name }}-domain.xml
       register: _virsh_define
       changed_when: "'defined' in _virsh_define.stdout"
-      when: _vm_missing | bool
+      when: _vm_missing | bool or _vm_shutoff | bool
 
     - name: Ensure libvirt NVRAM directory exists
       ansible.builtin.file:

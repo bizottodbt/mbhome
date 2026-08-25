@@ -27,6 +27,7 @@ infrastructure/kolla-ansible/.venv/
 infrastructure/kolla-ansible/globals.yml
 infrastructure/kolla-ansible/inventory/openstack-vm
 infrastructure/kolla-ansible/config/ironic.conf
+infrastructure/kolla-ansible/config/ironic/ironic-dnsmasq.conf
 infrastructure/kolla-ansible/config/ironic/ipa.ipxe
 # Ironic Python Agent deploy images — large binaries, downloaded by make kolla-ipa-images
 infrastructure/kolla-ansible/config/ironic/ironic-agent*.kernel

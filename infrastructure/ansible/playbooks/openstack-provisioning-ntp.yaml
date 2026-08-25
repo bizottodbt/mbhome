@@ -1,0 +1,60 @@
+---
+# Configure the OpenStack VM as an NTP source for the isolated provisioning VLAN.
+# IPA needs correct time before it creates/presents its temporary TLS certificate
+# to Ironic conductor.
+
+- name: Configure provisioning NTP on OpenStack VM
+  hosts: openstack
+  gather_facts: false
+  become: true
+
+  vars:
+    provisioning_cidr: "{{ homelab_provisioning_cidr | default('192.0.2.0/24') }}"
+    provisioning_ip: "{{ homelab_openstack_vm_provisioning_ip | default('192.0.2.10') }}"
+
+  pre_tasks:
+    - name: Check for local homelab vars
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../vars/homelab.local.yaml"
+      delegate_to: localhost
+      become: false
+      register: _homelab_local_vars
+
+    - name: Load local homelab vars
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vars/homelab.local.yaml"
+      when: _homelab_local_vars.stat.exists
+
+  tasks:
+    - name: Install chrony
+      ansible.builtin.apt:
+        name: chrony
+        state: present
+        update_cache: true
+
+    - name: Configure chrony to serve the provisioning network
+      ansible.builtin.copy:
+        dest: /etc/chrony/conf.d/mbhome-provisioning.conf
+        mode: "0644"
+        content: |
+          # Managed by mbhome Ansible.
+          # Serve time to IPA on the isolated provisioning network.
+          allow {{ provisioning_cidr }}
+          bindaddress {{ provisioning_ip }}
+
+          # Keep serving a sane local time source even if upstream NTP is
+          # temporarily unavailable during bare-metal provisioning.
+          local stratum 10
+      notify: Restart chrony
+
+    - name: Ensure chrony is enabled and running
+      ansible.builtin.service:
+        name: chrony
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Restart chrony
+      ansible.builtin.service:
+        name: chrony
+        state: restarted
