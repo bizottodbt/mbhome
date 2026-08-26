@@ -8,10 +8,20 @@ spec:
   interval: 10m
   path: ./kubernetes/infrastructure/dex
   prune: true
-  wait: true
   timeout: 10m
   sourceRef:
     kind: GitRepository
     name: flux-system
   dependsOn:
     - name: databases
+  healthCheckExprs:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
+      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      inProgress: "!status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')"
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: dex
+      namespace: flux-system
