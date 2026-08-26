@@ -2,8 +2,8 @@ proxmox_node = "mbhome-proxmox-01"
 
 # Pin this URL once you choose the Talos version for the real cluster. The
 # default uses GitHub's latest release redirect for quick smoke testing.
-talos_iso_url       = "https://github.com/siderolabs/talos/releases/download/v1.13.6/metal-amd64.iso"
-talos_iso_file_name = "talos-v1.13.6-metal-amd64.iso"
+talos_iso_url       = "https://github.com/siderolabs/talos/releases/download/v1.13.8/metal-amd64.iso"
+talos_iso_file_name = "talos-v1.13.8-metal-amd64.iso"
 
 iso_datastore_id = "proxmox-isos"
 vm_datastore_id  = "proxmox-vms"
@@ -89,14 +89,16 @@ talos_nodes = {
     storage_mac_address = "02:90:20:30:82:02"
   }
 
-  # mbhome-talos-worker-03 = {
-  #   role         = "worker"
-  #   proxmox_node = "mbhome-proxmox-03"
-  #   vm_id        = 9413
-  #   cores        = 4
-  #   memory_mb    = 8192
-  #   disk_gb      = 64
-  #   mac_address  = null
-  #   boot_from_iso = true
-  # }
+  mbhome-talos-worker-03 = {
+    role                = "worker"
+    proxmox_node        = "mbhome-proxmox-03"
+    vm_id               = 9413
+    cores               = 4
+    memory_mb           = 8192
+    disk_gb             = 64
+    mac_address         = "BC:24:11:07:60:A7"
+    boot_from_iso       = false
+    storage_bridge      = "vmbr90"
+    storage_mac_address = "02:90:20:30:83:02"
+  }
 }

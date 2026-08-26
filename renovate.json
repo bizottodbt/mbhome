@@ -67,6 +67,16 @@
       ]
     },
     {
+      "description": "Keep Terraform Core within the locally available operator version.",
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchDepNames": [
+        "terraform"
+      ],
+      "allowedVersions": "<=1.15.8"
+    },
+    {
       "description": "Group GitHub Actions updates.",
       "matchManagers": [
         "github-actions"
