@@ -12,7 +12,7 @@ spec:
   timeout: 5m
   prune: true
   wait: true
-  suspend: true
+  suspend: false
   path: ./deploy/kubernetes/base
   targetNamespace: finance-platform
   sourceRef:
