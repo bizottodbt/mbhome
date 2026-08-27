@@ -102,6 +102,12 @@ zones:
         ttl: 300
         state: present
       
+      - name: finance-platform-db
+        type: A
+        value: 10.20.30.201
+        ttl: 300
+        state: present
+      
       - name: "*.apps"
         type: A
         value: 10.20.30.200 #Cilium internal Gateway
