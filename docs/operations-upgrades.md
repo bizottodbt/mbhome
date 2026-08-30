@@ -122,9 +122,38 @@ kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
   --context admin@mbhome uncordon <talos-node-name>
 ```
 
-If Proxmox HA is enabled later, place the node into HA maintenance before the
-patch. Do not rely on HA failover as the normal patching method; planned
-migration is cleaner than crash-style failover.
+If Proxmox HA is enabled, place the node into HA maintenance before the patch.
+Do not rely on HA failover as the normal patching method; planned migration is
+cleaner than crash-style failover.
+
+The Proxmox HA desired state is managed by the cluster playbook:
+
+```bash
+make proxmox-cluster
+```
+
+The inventory defines one HA node-affinity rule across the shared-storage
+Proxmox nodes and registers selected VMs as HA resources. Only add guests whose
+disks live on shared storage and can safely restart on another node. The
+inventory still calls this logical placement set `proxmox_cluster_ha_groups`,
+but on Proxmox VE 9 the playbook applies it as an HA rule because legacy HA
+groups were migrated to rules.
+
+The rule uses `nofailback: true`, which the playbook translates to
+`failback 0` on each HA resource. That means a VM that fails over will not
+automatically move back just because its original node returned.
+
+Verify HA after applying:
+
+```bash
+ha-manager status
+ha-manager config
+systemctl status pve-ha-crm pve-ha-lrm
+```
+
+When stopping or restarting a HA-managed VM intentionally, use Proxmox HA
+controls or temporarily disable/maintenance the HA resource first. Otherwise HA
+may interpret the stop as something it should correct.
 
 Verify the node is empty enough to patch:
 

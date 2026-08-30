@@ -477,6 +477,197 @@
           {{ item.item.server }}:{{ item.item.export }}.
       loop: "{{ _proxmox_cluster_nfs_mount_sources_after.results | default([]) }}"
 
+    - name: Ensure Proxmox HA services are enabled and running
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - pve-ha-crm
+        - pve-ha-lrm
+      when: proxmox_cluster_ha_enabled | default(false) | bool
+
+    - name: Validate Proxmox HA node-affinity rule definitions
+      ansible.builtin.assert:
+        that:
+          - item.group is defined
+          - item.group | length > 0
+          - item.nodes is defined
+          - item.nodes | length > 0
+        fail_msg: >-
+          Proxmox HA node-affinity rule definitions require group and at least
+          one node entry. Node entries should use Proxmox HA syntax, for
+          example mbhome-proxmox-01:100.
+      loop: "{{ proxmox_cluster_ha_groups | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+
+    - name: Validate Proxmox HA resource definitions
+      ansible.builtin.assert:
+        that:
+          - item.sid is defined
+          - item.sid | length > 0
+          - item.group is defined
+          - item.group | length > 0
+        fail_msg: >-
+          Proxmox HA resource definitions require sid and group. Use sid values
+          like vm:9401 for QEMU VMs.
+      loop: "{{ proxmox_cluster_ha_resources | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+
+    - name: Read Proxmox HA resources
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - get
+          - "/cluster/ha/resources/{{ item.sid }}"
+          - --output-format
+          - json
+      register: _proxmox_cluster_ha_resource_configs
+      changed_when: false
+      failed_when: false
+      loop: "{{ proxmox_cluster_ha_resources | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+
+    - name: Create missing Proxmox HA resources
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'pvesh',
+              'create',
+              '/cluster/ha/resources',
+              '--sid',
+              item.item.sid,
+              '--state',
+              item.item.state | default('started'),
+              '--failback',
+              '0' if (proxmox_cluster_ha_groups | default([]) | selectattr('group', 'equalto', item.item.group) | map(attribute='nofailback') | first | default(true) | bool) else '1',
+              '--max_restart',
+              item.item.max_restart | default(1) | string,
+              '--max_relocate',
+              item.item.max_relocate | default(1) | string
+            ]
+            + (['--comment', item.item.comment | string] if item.item.comment is defined else [])
+          }}
+      changed_when: true
+      loop: "{{ _proxmox_cluster_ha_resource_configs.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+        - item.rc != 0
+
+    - name: Align existing Proxmox HA resources
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'pvesh',
+              'set',
+              '/cluster/ha/resources/' ~ item.item.sid,
+              '--state',
+              item.item.state | default('started'),
+              '--failback',
+              '0' if (proxmox_cluster_ha_groups | default([]) | selectattr('group', 'equalto', item.item.group) | map(attribute='nofailback') | first | default(true) | bool) else '1',
+              '--max_restart',
+              item.item.max_restart | default(1) | string,
+              '--max_relocate',
+              item.item.max_relocate | default(1) | string
+            ]
+            + (['--comment', item.item.comment | string] if item.item.comment is defined else [])
+          }}
+      changed_when: false
+      loop: "{{ _proxmox_cluster_ha_resource_configs.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+        - item.rc == 0
+
+    - name: Validate Proxmox HA node-affinity rules have resources
+      ansible.builtin.assert:
+        that:
+          - proxmox_cluster_ha_resources | default([]) | selectattr('group', 'equalto', item.group) | list | length > 0
+        fail_msg: >-
+          Proxmox HA node-affinity rule {{ item.group }} does not have any
+          resources assigned to it.
+      loop: "{{ proxmox_cluster_ha_groups | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+
+    - name: Read Proxmox HA node-affinity rules
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - get
+          - "/cluster/ha/rules/{{ item.group }}"
+          - --output-format
+          - json
+      register: _proxmox_cluster_ha_rule_configs
+      changed_when: false
+      failed_when: false
+      loop: "{{ proxmox_cluster_ha_groups | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+
+    - name: Create missing Proxmox HA node-affinity rules
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'ha-manager',
+              'rules',
+              'add',
+              'node-affinity',
+              item.item.group,
+              '--resources',
+              proxmox_cluster_ha_resources | default([]) | selectattr('group', 'equalto', item.item.group) | map(attribute='sid') | join(','),
+              '--nodes',
+              item.item.nodes | join(','),
+              '--strict',
+              '1' if item.item.restricted | default(false) | bool else '0'
+            ]
+            + (['--comment', item.item.comment | string] if item.item.comment is defined else [])
+          }}
+      changed_when: true
+      loop: "{{ _proxmox_cluster_ha_rule_configs.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+        - item.rc != 0
+
+    - name: Align existing Proxmox HA node-affinity rules
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'ha-manager',
+              'rules',
+              'set',
+              'node-affinity',
+              item.item.group,
+              '--resources',
+              proxmox_cluster_ha_resources | default([]) | selectattr('group', 'equalto', item.item.group) | map(attribute='sid') | join(','),
+              '--nodes',
+              item.item.nodes | join(','),
+              '--strict',
+              '1' if item.item.restricted | default(false) | bool else '0'
+            ]
+            + (['--comment', item.item.comment | string] if item.item.comment is defined else [])
+          }}
+      changed_when: false
+      loop: "{{ _proxmox_cluster_ha_rule_configs.results | default([]) }}"
+      when:
+        - inventory_hostname == _proxmox_cluster_primary
+        - proxmox_cluster_ha_enabled | default(false) | bool
+        - item.rc == 0
+
     - name: Validate Proxmox cluster backup jobs
       ansible.builtin.assert:
         that:

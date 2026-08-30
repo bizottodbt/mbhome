@@ -100,6 +100,49 @@ all:
             repeat_missed: true
             prune_backups: keep-daily=7,keep-weekly=4,keep-monthly=3
             notes_template: !unsafe "{{guestname}} - {{node}} - {{vmid}}"
+        proxmox_cluster_ha_enabled: true
+        proxmox_cluster_ha_groups:
+          - group: mbhome-ha
+            # node:priority entries use Proxmox HA group syntax. Equal
+            # priority means Proxmox can choose any healthy node.
+            nodes:
+              - mbhome-proxmox-01:100
+              - mbhome-proxmox-02:100
+              - mbhome-proxmox-03:100
+            restricted: false
+            nofailback: true
+            comment: mbhome HA-capable shared-storage nodes
+        proxmox_cluster_ha_resources:
+          # Add only guests whose disks live on shared storage and can be
+          # safely restarted on another Proxmox node.
+          - sid: vm:9401
+            group: mbhome-ha
+            state: started
+            comment: mbhome-talos-cp-01
+          - sid: vm:9402
+            group: mbhome-ha
+            state: started
+            comment: mbhome-talos-cp-02
+          - sid: vm:9403
+            group: mbhome-ha
+            state: started
+            comment: mbhome-talos-cp-03
+          - sid: vm:9411
+            group: mbhome-ha
+            state: started
+            comment: mbhome-talos-worker-01
+          - sid: vm:9412
+            group: mbhome-ha
+            state: started
+            comment: mbhome-talos-worker-02
+          - sid: vm:9413
+            group: mbhome-ha
+            state: started
+            comment: mbhome-talos-worker-03
+          - sid: vm:9501
+            group: mbhome-ha
+            state: started
+            comment: mbhome-ha-01
         proxmox_10gbe_mtu: 1500
         proxmox_storage_content:
           - storage: local
