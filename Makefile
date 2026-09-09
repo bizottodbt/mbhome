@@ -691,12 +691,23 @@ vault-migrate-auto-unseal: ## Interactively migrate Vault from Shamir unseal to 
 	for pod in $$pods; do \
 		status="$$( $(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status 2>/dev/null || true )"; \
 		if printf '%s\n' "$$status" | grep -Eq '^Initialized[[:space:]]+false$$'; then \
-			echo "$$pod is not initialized. Do not run vault operator init again; fix Raft retry_join and recreate the pod."; \
+			echo "$$pod is not initialized. Do not initialize it during seal migration."; \
+			echo "If this is a newly added replica, scale back to existing Raft members, migrate the existing cluster, then add replicas."; \
 			exit 1; \
 		fi; \
 		if printf '%s\n' "$$status" | grep -Eq '^Sealed[[:space:]]+false$$'; then \
-			echo "$$pod is already unsealed"; \
-			continue; \
+			if printf '%s\n' "$$status" | grep -Eq '^Seal Type[[:space:]]+transit$$'; then \
+				if printf '%s\n' "$$status" | grep -Eq '^Seal Migration in Progress[[:space:]]+true$$'; then \
+					echo "$$pod is unsealed with transit seal, but seal migration is still in progress."; \
+					echo "Restart the existing Vault pods together so they return sealed, then rerun this target with all existing pods."; \
+					exit 1; \
+				fi; \
+				echo "$$pod is already migrated and unsealed"; \
+				continue; \
+			fi; \
+			echo "$$pod is unsealed but still reports Seal Type shamir."; \
+			echo "Restart existing Vault pods after the transit seal config is applied, then rerun this target while they are sealed."; \
+			exit 1; \
 		fi; \
 		for step in $$(seq 1 "$(VAULT_AUTO_UNSEAL_MIGRATE_STEPS)"); do \
 			echo "Vault auto-unseal migration step $$step/$(VAULT_AUTO_UNSEAL_MIGRATE_STEPS) for $$pod"; \

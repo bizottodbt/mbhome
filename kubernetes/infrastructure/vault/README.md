@@ -132,6 +132,29 @@ make vault-migrate-auto-unseal
 make vault-status
 ```
 
+Keep Vault at the current Raft membership during migration. Do not raise
+`server.ha.replicas` until existing pods report `Seal Type transit`. A new pod
+created before migration can show `Seal Type transit` and `Initialized false`;
+do not initialize that pod. Scale back to the existing members, finish the seal
+migration, and only then add the new replica.
+
+If existing pods report `Seal Type transit`, `Sealed false`, and
+`Seal Migration in Progress true` with no active node, the migration lost Raft
+leadership mid-flight. Scale back to the existing members, restart those pods
+together so they return sealed, then rerun migration against all existing pods:
+
+```bash
+kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
+  --context admin@mbhome \
+  -n vault scale statefulset vault --replicas=2
+
+kubectl --kubeconfig infrastructure/talos/clusters/mbhome/kubeconfig \
+  --context admin@mbhome \
+  -n vault delete pod vault-0 vault-1
+
+make vault-migrate-auto-unseal VAULT_PODS="vault-0 vault-1"
+```
+
 During migration, use `make vault-migrate-auto-unseal`, not `make vault-unseal`.
 After migration succeeds, normal Vault pod restarts should auto-unseal as long
 as the Unraid transit provider is reachable and unsealed.
