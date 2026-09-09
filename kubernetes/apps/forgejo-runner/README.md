@@ -52,7 +52,7 @@ make forgejo-runner-status
 
 ## Workflow Labels
 
-The first runner exposes these labels:
+The runner exposes these labels:
 
 ```text
 docker
@@ -67,6 +67,24 @@ Docker commands inside workflow jobs talk to the isolated Docker-in-Docker
 sidecar through `DOCKER_HOST=unix:///var/run/docker.sock`. The runner itself
 uses `container.docker_host=unix:///var/run/docker/docker.sock` to reach the
 same sidecar from the runner pod.
+
+The runner capacity is set to `4`, so Forgejo can hand up to four jobs to this
+runner at the same time. Forgejo still honors workflow dependencies:
+
+- jobs without `needs:` can run in parallel when runner capacity is available
+- jobs with `needs:` wait for their dependencies to finish successfully
+- top-level or job-level `concurrency:` settings can still intentionally
+  serialize matching workflow runs
+
+Each job runs in its own workflow container. The runner keeps
+`container.network: ""`, which lets Forgejo Runner create an isolated Docker
+network per job so service containers from parallel jobs do not collide.
+
+This is not a native Kubernetes pod-per-job executor. Upstream Forgejo Runner
+currently supports Docker, Podman, LXC, and host execution labels. A true
+Kubernetes-per-job backend would require a separate runner implementation or a
+third-party chart/controller, so keep this deployment on the upstream runner
+until that trade-off is worth taking.
 
 Example workflow:
 

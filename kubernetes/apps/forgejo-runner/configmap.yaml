@@ -12,7 +12,7 @@ data:
       level: info
 
     runner:
-      capacity: 1
+      capacity: 4
       envs:
         DOCKER_HOST: unix:///var/run/docker.sock
       env_file: ""

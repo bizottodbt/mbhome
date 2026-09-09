@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        mbhome.biz/config-revision: "2026-08-16-job-docker-socket"
+        mbhome.biz/config-revision: "2026-09-09-parallel-job-capacity"
       labels:
         app.kubernetes.io/name: forgejo-runner
     spec:
@@ -44,6 +44,13 @@ spec:
               mountPath: /var/lib/docker
             - name: docker-socket
               mountPath: /var/run/docker
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 6Gi
           securityContext:
             privileged: true
             allowPrivilegeEscalation: true
