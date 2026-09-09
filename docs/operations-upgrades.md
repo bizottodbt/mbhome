@@ -431,16 +431,18 @@ Avoid doing a Proxmox host patch and a Talos OS upgrade in the same window unles
 the first change is fully validated before starting the second. When something
 breaks, smaller blast radius is worth the extra patience.
 
-Vault is the special case in this cluster. The current deployment uses Shamir
-unseal, so a Vault pod that is killed, evicted, restarted, or recreated comes
-back sealed. After any drain or node reboot that moves or restarts Vault, run:
+Vault is the special case in this cluster. The deployment uses transit
+auto-unseal through the small Unraid provider in
+`infrastructure/unraid/vault-unseal`. Before maintenance, make sure that
+provider is reachable and unsealed:
 
 ```bash
 make vault-status
-make vault-unseal
 ```
 
-Until at least one Vault pod is unsealed and active, `vault-active` and
+After maintenance, `make vault-status` should show `Sealed false` without
+manual unseal. If Vault still reports sealed, check the Unraid transit provider
+first. Until at least one Vault pod is unsealed and active, `vault-active` and
 `vault-ui` have no endpoints, and Vault Secrets Operator syncs will fail.
 
 ## Rollback And Stop Conditions

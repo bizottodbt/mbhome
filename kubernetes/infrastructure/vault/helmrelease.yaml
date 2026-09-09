@@ -42,6 +42,11 @@ spec:
         limits:
           memory: 1Gi
 
+      extraSecretEnvironmentVars:
+        - envName: VAULT_TRANSIT_UNSEAL_TOKEN
+          secretName: vault-transit-unseal
+          secretKey: token
+
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -99,6 +104,14 @@ spec:
               telemetry {
                 unauthenticated_metrics_access = "true"
               }
+            }
+
+            seal "transit" {
+              address = "http://10.20.30.50:8200"
+              token = "env://VAULT_TRANSIT_UNSEAL_TOKEN"
+              key_name = "autounseal"
+              mount_path = "transit/"
+              disable_renewal = "false"
             }
 
             storage "raft" {

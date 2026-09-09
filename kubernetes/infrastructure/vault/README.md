@@ -7,24 +7,30 @@ The deployment uses integrated Raft with stable StatefulSet peer discovery:
 
 ```text
 mode: HA Raft
-replicas: 1
+replicas: 2
 storage: nfs-cache
 ui: https://vault.apps.mbhome.biz
+seal: transit auto-unseal through Unraid vault-unseal provider
 ```
 
-The current single-replica phase allows one voluntary disruption through the
-Vault PodDisruptionBudget. This lets Kubernetes drain the node and recreate the
-pod elsewhere, with a short Vault outage while the pod stops, starts on the next
-node, and is unsealed if needed.
+The Vault PodDisruptionBudget allows one voluntary disruption. This lets
+Kubernetes drain one node at a time while keeping the other Vault replica
+available when possible.
 
-Vault uses Shamir sealing in this deployment. Any Vault pod that is killed,
-evicted, restarted, or recreated comes back sealed and must be unsealed before
-it can serve traffic. Until at least one pod is unsealed and active, the
-`vault-active` and `vault-ui` services have no endpoints.
+Vault is configured for transit auto-unseal. The transit provider runs outside
+Kubernetes from `infrastructure/unraid/vault-unseal` and is expected at:
+
+```text
+http://10.20.30.50:8200
+```
+
+The Kubernetes secret `vault/vault-transit-unseal` provides only the narrow
+transit token. The token is deliberately not stored in Vault itself because this
+is the secret needed to unseal Vault.
 
 When the cluster grows back to three Vault replicas, `vault-1` and `vault-2`
 join the initialized `vault-0` cluster through Raft `retry_join` stanzas.
-Initialize Vault once only, then unseal every sealed pod.
+Initialize Vault once only.
 
 Vault starts uninitialized and sealed. That is expected.
 
@@ -53,13 +59,87 @@ key shares: 5
 key threshold: 3
 ```
 
-Override them only if you intentionally want a different Shamir key ceremony:
+With auto-unseal, these become recovery keys after seal migration. They are no
+longer needed for routine pod restarts, but they are still required for recovery
+operations such as root-token generation.
+
+Override them only if you intentionally want a different recovery key ceremony:
 
 ```bash
 make vault-init VAULT_KEY_SHARES=7 VAULT_KEY_THRESHOLD=4
 ```
 
-Unseal after initialization:
+## Auto-Unseal Migration
+
+Vault was originally initialized with Shamir unseal. Moving to transit
+auto-unseal requires a seal migration and a brief Vault outage. HashiCorp's seal
+migration flow requires the new seal configuration to be present and the old
+Shamir keys to be submitted with `vault operator unseal -migrate`.
+
+First, deploy and initialize the Unraid transit provider:
+
+```bash
+cd /mnt/user/appdata/vault-unseal
+docker compose up -d
+docker compose exec vault-unseal vault operator init -key-shares=3 -key-threshold=2
+docker compose exec vault-unseal vault operator unseal
+docker compose exec vault-unseal vault operator unseal
+docker compose exec vault-unseal vault login
+docker compose exec vault-unseal vault secrets enable transit
+docker compose exec vault-unseal vault write -f transit/keys/autounseal
+```
+
+Create the provider policy:
+
+```bash
+docker compose exec vault-unseal sh -lc 'printf "%s\n" \
+  "path \"transit/encrypt/autounseal\" {" \
+  "  capabilities = [\"update\"]" \
+  "}" \
+  "" \
+  "path \"transit/decrypt/autounseal\" {" \
+  "  capabilities = [\"update\"]" \
+  "}" \
+  > /tmp/autounseal-policy.hcl'
+
+docker compose exec vault-unseal vault policy write autounseal /tmp/autounseal-policy.hcl
+```
+
+Create the provider token:
+
+```bash
+docker compose exec vault-unseal vault token create \
+  -orphan \
+  -period=720h \
+  -policy=autounseal \
+  -field=token
+```
+
+Copy that token into the Kubernetes secret before reconciling the Vault Helm
+release:
+
+```bash
+export VAULT_TRANSIT_UNSEAL_TOKEN='hvs...'
+make vault-autounseal-secret
+```
+
+Reconcile infrastructure, then migrate Vault with the existing Shamir unseal
+keys:
+
+```bash
+make flux-reconcile
+make vault-migrate-auto-unseal
+make vault-status
+```
+
+During migration, use `make vault-migrate-auto-unseal`, not `make vault-unseal`.
+After migration succeeds, normal Vault pod restarts should auto-unseal as long
+as the Unraid transit provider is reachable and unsealed.
+
+## Manual Unseal
+
+Use this only before auto-unseal migration or if Vault is still using Shamir
+seal:
 
 ```bash
 make vault-unseal
@@ -81,12 +161,14 @@ make vault-unseal VAULT_PODS=vault-1
 ```
 
 After any node drain, Talos upgrade, Proxmox VM migration that restarts the VM,
-or manual pod deletion, check Vault and unseal any sealed pods:
+or manual pod deletion, check Vault:
 
 ```bash
 make vault-status
-make vault-unseal
 ```
+
+If Vault still reports `Sealed true` after auto-unseal migration, first verify
+that the Unraid transit provider is reachable and unsealed.
 
 After logging in with the root token, enable audit logging to the mounted audit
 PVC:
@@ -114,12 +196,11 @@ make vault-secrets-operator-bootstrap VAULT_KV_MOUNT=example
 The root token is used interactively through the Vault CLI and the CLI token file
 is removed from the pod at the end of the target.
 
-The full first-run flow is:
+The full migration flow for this existing cluster is:
 
 ```bash
 make vault-status
-make vault-init
-make vault-unseal
+make vault-migrate-auto-unseal
 make vault-bootstrap
 make vault-status
 ```
@@ -203,6 +284,7 @@ the expected paths:
 - Cilium Gateway egress to `10.20.30.200/32` and the
   `gateway-system/cilium-gateway-internal` service on port `443` for internal
   calls to public OIDC URLs. This is L4-only because those calls are HTTPS.
+- Transit auto-unseal egress to the Unraid provider at `10.20.30.50:8200`.
 - OIDC discovery and token exchange go through the internal Gateway address,
   not a separate FQDN policy rule.
 - Direct Dex service egress to `dex/dex:5556` is allowed so OIDC can avoid

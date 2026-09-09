@@ -82,6 +82,8 @@ VELERO_BACKUP_WAIT_SECONDS ?= 10
 VAULT_POD ?= vault-0
 VAULT_PODS ?=
 VAULT_UNSEAL_STEPS ?= 3
+VAULT_AUTO_UNSEAL_MIGRATE_STEPS ?= $(VAULT_UNSEAL_STEPS)
+VAULT_TRANSIT_UNSEAL_SECRET ?= vault-transit-unseal
 VAULT_KEY_SHARES ?= 5
 VAULT_KEY_THRESHOLD ?= 3
 VAULT_AUDIT_PATH ?= /vault/audit/vault-audit.log
@@ -134,7 +136,7 @@ SECURITY_TRIVY_SKIP_FILES ?= kubernetes/clusters/mbhome/flux-system/gotk-compone
 TRIVY ?= trivy
 CONTAINER_RUNTIME ?= docker
 
-.PHONY: help ansible-collections openstack-vm openstack-provisioning-ntp openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudflared-token-secret cloudflared-required-secrets-check cloudflared-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status llm-status llm-models llm-model-pull open-webui-oauth-secret forgejo-postgres-secret forgejo-config-secret forgejo-admin-secret forgejo-oauth-secret forgejo-required-secrets-check forgejo-status forgejo-runner-registration-secret forgejo-runner-required-secrets-check forgejo-runner-status forgejo-gitops-deploy-key forgejo-gitops-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile security-scan-repo security-scan-cluster-images proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
+.PHONY: help ansible-collections openstack-vm openstack-provisioning-ntp openstack-stack-stop openstack-stack-start openstack-stack-status openstack-setup openstack-versions ironic-set-deploy-images ironic-deploy-proxmox ironic-build-image proxmox-baseline proxmox-cluster windows-dc-baseline windows-ad-forest windows-ad-replica windows-ad-ldaps windows-ad-directory-check windows-ad-directory-apply windows-ad-dns-check windows-ad-dns-apply proxmox-smoke-vm-init proxmox-smoke-vm-plan proxmox-smoke-vm-apply proxmox-smoke-vm-destroy proxmox-talos-vm-init proxmox-talos-vm-plan proxmox-talos-vm-apply proxmox-talos-vm-destroy proxmox-home-assistant-vm-init proxmox-home-assistant-vm-plan proxmox-home-assistant-vm-apply proxmox-home-assistant-vm-destroy talos-inspect talos-gen-secrets talos-gen-config talos-apply-insecure talos-apply talos-apply-controlplane-insecure talos-apply-controlplane talos-bootstrap talos-kubeconfig talos-health talos-version talos-upgrade-plan talos-upgrade talos-restart-kube-apiserver dex-generate-oidc-kubeconfig kubernetes-oidc-context kubernetes-oidc-merge-context kubernetes-oidc-whoami gateway-api-crds-install gateway-api-status cilium-helm-repo cilium-install cilium-status cilium-hubble-status cilium-uninstall cert-manager-crds-install cert-manager-cloudflare-secret cert-manager-status cloudflared-token-secret cloudflared-required-secrets-check cloudflared-status cloudnative-pg-status metrics-server-status velero-s3-secret velero-required-secrets-check velero-status velero-backup vault-status vault-init vault-unseal vault-autounseal-secret vault-migrate-auto-unseal vault-bootstrap vault-oidc-secret vault-oidc-bootstrap vault-secrets-operator-bootstrap vault-app-namespace-bootstrap vault-secrets-operator-status monitoring-grafana-secret grafana-oauth-secret monitoring-required-secrets-check monitoring-status immich-album-sync-status immichframe-status llm-status llm-models llm-model-pull open-webui-oauth-secret forgejo-postgres-secret forgejo-config-secret forgejo-admin-secret forgejo-oauth-secret forgejo-required-secrets-check forgejo-status forgejo-runner-registration-secret forgejo-runner-required-secrets-check forgejo-runner-status forgejo-gitops-deploy-key forgejo-gitops-status dex-postgres-secret dex-postgres-status dex-ldap-secret dex-required-secrets-check dex-status nfs-csi-status flux-check flux-bootstrap-github flux-status flux-tree flux-reconcile security-scan-repo security-scan-cluster-images proxmox-ad-vms-init proxmox-ad-vms-plan proxmox-ad-vms-apply proxmox-ad-vms-destroy proxmox-windows-template-init proxmox-windows-template-answer-iso proxmox-windows-template-validate proxmox-windows-template-build bmc-baseline kolla-genpwd kolla-bootstrap kolla-prechecks kolla-deploy kolla-post-deploy kolla-reconfigure kolla-destroy kolla-ipa-images
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
@@ -670,6 +672,35 @@ vault-unseal: ## Interactively submit Vault unseal keys to all Vault pods, or VA
 		for step in $$(seq 1 "$(VAULT_UNSEAL_STEPS)"); do \
 			echo "Vault unseal step $$step/$(VAULT_UNSEAL_STEPS) for $$pod"; \
 			$(KUBECTL_ADMIN) -n vault exec -it "$$pod" -- vault operator unseal || exit 1; \
+		done; \
+		$(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status || exit 1; \
+	done
+
+vault-autounseal-secret: ## Create/update the transit auto-unseal token secret from VAULT_TRANSIT_UNSEAL_TOKEN
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@test -n "$$VAULT_TRANSIT_UNSEAL_TOKEN" || (echo "Export VAULT_TRANSIT_UNSEAL_TOKEN before running this target"; exit 1)
+	$(KUBECTL_ADMIN) -n vault create secret generic "$(VAULT_TRANSIT_UNSEAL_SECRET)" --from-literal=token="$$VAULT_TRANSIT_UNSEAL_TOKEN" --dry-run=client -o yaml | $(KUBECTL_ADMIN) apply -f -
+
+vault-migrate-auto-unseal: ## Interactively migrate Vault from Shamir unseal to the configured transit auto-unseal seal
+	@test -f "$(KUBECONFIG_FILE)" || (echo "Run make talos-kubeconfig first"; exit 1)
+	@pods="$(VAULT_PODS)"; \
+	if [ -z "$$pods" ]; then \
+		pods="$$( $(KUBECTL_ADMIN) -n vault get pods -l app.kubernetes.io/instance=vault,component=server -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}' )"; \
+	fi; \
+	if [ -z "$$pods" ]; then echo "No Vault pods found"; exit 1; fi; \
+	for pod in $$pods; do \
+		status="$$( $(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status 2>/dev/null || true )"; \
+		if printf '%s\n' "$$status" | grep -Eq '^Initialized[[:space:]]+false$$'; then \
+			echo "$$pod is not initialized. Do not run vault operator init again; fix Raft retry_join and recreate the pod."; \
+			exit 1; \
+		fi; \
+		if printf '%s\n' "$$status" | grep -Eq '^Sealed[[:space:]]+false$$'; then \
+			echo "$$pod is already unsealed"; \
+			continue; \
+		fi; \
+		for step in $$(seq 1 "$(VAULT_AUTO_UNSEAL_MIGRATE_STEPS)"); do \
+			echo "Vault auto-unseal migration step $$step/$(VAULT_AUTO_UNSEAL_MIGRATE_STEPS) for $$pod"; \
+			$(KUBECTL_ADMIN) -n vault exec -it "$$pod" -- vault operator unseal -migrate || exit 1; \
 		done; \
 		$(KUBECTL_ADMIN) -n vault exec "$$pod" -- vault status || exit 1; \
 	done
