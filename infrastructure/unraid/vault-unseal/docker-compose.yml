@@ -1,6 +1,6 @@
 services:
   vault-unseal:
-    image: hashicorp/vault:2.0.3
+    image: hashicorp/vault:2.1.0@sha256:5520cc26271c024e6ffa45cdf95255bd26b70d71ba4b7e0bc18925bef4128adb
     container_name: vault-unseal
     restart: unless-stopped
     cap_drop:
