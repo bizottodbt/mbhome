@@ -83,7 +83,7 @@ spec:
 
       ha:
         enabled: true
-        replicas: 2
+        replicas: 3
         disruptionBudget:
           enabled: true
           maxUnavailable: 1
