@@ -1,0 +1,19 @@
+services:
+  vault-unseal:
+    image: hashicorp/vault:2.0.3
+    container_name: vault-unseal
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: "http://${VAULT_UNSEAL_BIND_IP:-10.20.30.50}:${VAULT_UNSEAL_PORT:-8200}"
+    ports:
+      - "${VAULT_UNSEAL_BIND_IP:-10.20.30.50}:${VAULT_UNSEAL_PORT:-8200}:8200/tcp"
+    volumes:
+      - ./config/vault.hcl:/vault/config/vault.hcl:ro
+      - ./data:/vault/file
+      - ./logs:/vault/logs
+    command: ["vault", "server", "-config=/vault/config/vault.hcl"]
