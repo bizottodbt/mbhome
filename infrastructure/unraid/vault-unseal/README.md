@@ -29,6 +29,15 @@ Create the local `.env` file:
 cp .env.example .env
 ```
 
+Create the persisted directories and make them writable by the Vault user inside
+the container:
+
+```bash
+mkdir -p data logs
+chown -R 100:1000 data logs
+chmod 750 data logs
+```
+
 Start the provider:
 
 ```bash
@@ -91,6 +100,20 @@ docker compose exec vault-unseal vault token create \
   -period=720h \
   -policy=autounseal \
   -field=token
+```
+
+## Permission Fix
+
+If `vault operator init` fails with `failed to persist keyring` or
+`permission denied`, stop the container, fix ownership of the bind-mounted
+directories, and start it again:
+
+```bash
+docker compose down
+mkdir -p data logs
+chown -R 100:1000 data logs
+chmod 750 data logs
+docker compose up -d
 ```
 
 ## Health
