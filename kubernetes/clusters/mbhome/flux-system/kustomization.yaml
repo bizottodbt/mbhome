@@ -5,3 +5,15 @@ resources:
   # These files are generated and updated by `flux bootstrap`.
   - gotk-components.yaml
   - gotk-sync.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: source-controller
+      namespace: flux-system
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: KUBE_FEATURE_WatchListClient
+          value: "false"
