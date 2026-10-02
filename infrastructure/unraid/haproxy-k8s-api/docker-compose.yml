@@ -1,6 +1,6 @@
 services:
   haproxy:
-    image: haproxy:3.4-alpine@sha256:c0afc4864dca9c68694cd1290433f0ee79b5c55be80f6745a165ffe373b9a564
+    image: haproxy:3.4-alpine@sha256:7af8255207ee9964ccb4eec8ce4b7a40b777769665e3ae83897fb01b24d8a43a
     container_name: haproxy
     restart: unless-stopped
     ports:
@@ -37,7 +37,7 @@ services:
     command: ["/usr/local/bin/certbot-renew"]
 
   haproxy-cert-reloader:
-    image: docker:29-cli@sha256:018edbc908e08fcc9dbf029c812c34251e9b4719e6f71ca0e5eae2a987d014ca
+    image: docker:29-cli@sha256:b1805116a6a86cc591b5d5f60a910a0715cdcc9d18d866ad68b1457ead25c35c
     container_name: haproxy-cert-reloader
     profiles:
       - auto-reload
