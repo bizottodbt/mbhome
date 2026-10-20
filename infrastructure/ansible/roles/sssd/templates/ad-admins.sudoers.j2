@@ -1,0 +1,3 @@
+{% for group in ad_admin_groups %}
+%{{ group | replace(' ', '\\ ') }} ALL=(ALL:ALL) ALL
+{% endfor %}

@@ -1,0 +1,197 @@
+---
+- name: Upgrade installed Debian packages
+  ansible.builtin.apt:
+    upgrade: full
+    update_cache: true
+    cache_valid_time: 3600
+  when: development_full_upgrade_enabled | default(true) | bool
+
+- name: Install development workstation packages
+  ansible.builtin.apt:
+    name:
+      - acl
+      - ansible-core
+      - bash-completion
+      - build-essential
+      - ca-certificates
+      - curl
+      - dnsutils
+      - docker-compose
+      - docker.io
+      - fd-find
+      - file
+      - git
+      - git-lfs
+      - gnupg
+      - htop
+      - jq
+      - less
+      - libpq-dev
+      - locales
+      - lsof
+      - make
+      - netcat-openbsd
+      - nodejs
+      - npm
+      - openssh-client
+      - pipx
+      - pkg-config
+      - postgresql-client
+      - python3
+      - python3-dev
+      - python3-pip
+      - python3-venv
+      - ripgrep
+      - rsync
+      - shellcheck
+      - sudo
+      - tmux
+      - tree
+      - unzip
+      - vim
+      - wget
+      - yamllint
+      - zip
+    state: present
+    update_cache: true
+
+- name: Enable the en_US UTF-8 locale
+  ansible.builtin.lineinfile:
+    path: /etc/locale.gen
+    regexp: '^#?\s*en_US.UTF-8\s+UTF-8$'
+    line: en_US.UTF-8 UTF-8
+  notify: Generate locales
+
+- name: Set the system locale
+  ansible.builtin.copy:
+    dest: /etc/default/locale
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      LANG=en_US.UTF-8
+      LANGUAGE=en_US:en
+      LC_CTYPE=en_US.UTF-8
+      LC_MESSAGES=en_US.UTF-8
+      LC_ALL=en_US.UTF-8
+
+- name: Apply locale generation before later commands
+  ansible.builtin.meta: flush_handlers
+
+- name: Configure Git LFS
+  ansible.builtin.command:
+    argv:
+      - git
+      - lfs
+      - install
+      - --system
+  register: _git_lfs_install
+  changed_when: "'Updated Git hooks' in _git_lfs_install.stdout"
+
+- name: Enable Docker
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Allow the development user to run Docker
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+  notify: Restart Docker
+
+- name: Check whether Codex CLI is installed
+  ansible.builtin.command:
+    argv:
+      - codex
+      - --version
+  register: _codex_version
+  changed_when: false
+  failed_when: false
+
+- name: Install Codex CLI
+  ansible.builtin.command:
+    argv:
+      - npm
+      - install
+      - --global
+      - '@openai/codex'
+  when: _codex_version.rc != 0
+
+- name: Install uv for the development user
+  ansible.builtin.command:
+    argv:
+      - pipx
+      - install
+      - uv
+    creates: "/home/{{ ansible_user }}/.local/bin/uv"
+  become: true
+  become_user: "{{ ansible_user }}"
+
+- name: Install HashiCorp CLI archives
+  ansible.builtin.unarchive:
+    src: "{{ item.url }}"
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - "{{ item.binary }}"
+    mode: "0755"
+    creates: "/usr/local/bin/{{ item.binary }}"
+  loop:
+    - binary: terraform
+      url: https://releases.hashicorp.com/terraform/1.15.8/terraform_1.15.8_linux_amd64.zip
+    - binary: packer
+      url: https://releases.hashicorp.com/packer/1.15.4/packer_1.15.4_linux_amd64.zip
+
+- name: Install standalone infrastructure CLIs
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "/usr/local/bin/{{ item.binary }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - binary: kubectl
+      url: https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl
+    - binary: talosctl
+      url: https://github.com/siderolabs/talos/releases/download/v1.13.6/talosctl-linux-amd64
+
+- name: Install archived infrastructure CLIs
+  ansible.builtin.unarchive:
+    src: "{{ item.url }}"
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - "{{ item.member }}"
+    mode: "0755"
+    creates: "/usr/local/bin/{{ item.binary }}"
+  loop:
+    - binary: helm
+      member: linux-amd64/helm
+      url: https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz
+    - binary: flux
+      member: flux
+      url: https://github.com/fluxcd/flux2/releases/download/v2.9.2/flux_2.9.2_linux_amd64.tar.gz
+    - binary: trivy
+      member: trivy
+      url: https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.tar.gz
+    - binary: kustomize
+      member: kustomize
+      url: https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz
+
+- name: Normalize nested CLI archive paths
+  ansible.builtin.command:
+    argv:
+      - install
+      - -m
+      - "0755"
+      - /usr/local/bin/linux-amd64/helm
+      - /usr/local/bin/helm
+    removes: /usr/local/bin/linux-amd64/helm
+    creates: /usr/local/bin/helm
+
+- name: Remove empty Helm archive directory
+  ansible.builtin.file:
+    path: /usr/local/bin/linux-amd64
+    state: absent

@@ -266,3 +266,10 @@ all:
     windows_ad_replicas:
       hosts:
         mbhome-ad-02: {}
+
+    development_vms:
+      hosts:
+        mbhome-dev-01:
+          ansible_host: 192.0.2.91
+          ansible_user: debian
+          # AD_JOIN_PASSWORD is supplied in the environment, never here.

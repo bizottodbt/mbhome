@@ -133,6 +133,10 @@ users:
     upn: admin_example@ad.example
     email: admin_example@ad.example
     path: OU=Users,OU=LAB,DC=ad,DC=example
+    # Optional, multi-valued SSH public keys consumed by SSSD. Omitting this
+    # field leaves the AD attribute unmanaged; an empty list clears it.
+    altSecurityIdentities:
+      - ssh-ed25519 AAAA_REPLACE_WITH_PUBLIC_KEY admin@example
     groups:
       - homelab-admins
       - linux-admins

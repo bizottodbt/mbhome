@@ -1,7 +1,14 @@
 ---
-# Phase 3 — run after Active Directory domain is deployed as a VM on Proxmox.
-- name: Join nodes to Active Directory via SSSD
-  hosts: proxmox_nodes
+# Configure development tooling before joining AD so locale and DNS diagnostics
+# are available even on a newly provisioned cloud image.
+- name: Configure development hosts
+  hosts: development_vms
+  become: true
+  roles:
+    - development
+
+- name: Join Linux nodes to Active Directory via SSSD
+  hosts: linux_domain_members
   become: true
   roles:
     - sssd

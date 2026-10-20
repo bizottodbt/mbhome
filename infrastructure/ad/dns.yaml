@@ -107,6 +107,12 @@ zones:
         value: 10.20.30.201
         ttl: 300
         state: present
+
+      - name: mbhome-dev-01
+        type: A
+        value: 10.20.30.91
+        ttl: 300
+        state: present
       
       - name: "*.apps"
         type: A

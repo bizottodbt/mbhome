@@ -1,3 +1,145 @@
-# SSSD role — joins nodes to Active Directory and configures PAM/NSS.
-# Dependencies: realmd, sssd, sssd-ad, adcli, krb5-user
-# TODO: implement in tasks/main.yaml (Phase 3)
+---
+- name: Validate AD join configuration
+  ansible.builtin.assert:
+    that:
+      - ad_domain | default('') | length > 0
+      - ad_realm | default('') | length > 0
+      - ad_join_user | default('') | length > 0
+      - ad_login_groups | default([]) | length > 0
+    fail_msg: Define the AD domain, realm, join user, and permitted groups in inventory.
+
+- name: Install AD client packages
+  ansible.builtin.apt:
+    name:
+      - adcli
+      - krb5-user
+      - libnss-sss
+      - libpam-sss
+      - packagekit
+      - realmd
+      - samba-common-bin
+      - openssh-server
+      - sssd
+      - sssd-ad
+      - sssd-tools
+    state: present
+    update_cache: true
+
+- name: Verify AD service discovery through DNS
+  ansible.builtin.command:
+    argv:
+      - dig
+      - +short
+      - SRV
+      - "_ldap._tcp.dc._msdcs.{{ ad_domain }}"
+  register: _ad_dns_check
+  changed_when: false
+  failed_when: _ad_dns_check.rc != 0 or _ad_dns_check.stdout | trim | length == 0
+
+- name: Discover the AD realm
+  ansible.builtin.command:
+    argv:
+      - realm
+      - discover
+      - "{{ ad_domain }}"
+  register: _ad_discovery
+  changed_when: false
+  failed_when: _ad_discovery.rc != 0
+
+- name: Read current realm membership
+  ansible.builtin.command:
+    argv:
+      - realm
+      - list
+      - --name-only
+  register: _joined_realms
+  changed_when: false
+  failed_when: false
+
+- name: Require the AD join password for a new join
+  ansible.builtin.assert:
+    that:
+      - ad_join_password | default('') | length > 0
+    fail_msg: Export AD_JOIN_PASSWORD before running the playbook for an unjoined host.
+  when: ad_domain | lower not in (_joined_realms.stdout_lines | map('lower') | list)
+  no_log: true
+
+- name: Join the host to Active Directory
+  ansible.builtin.command:
+    argv:
+      - realm
+      - join
+      - "{{ ad_domain }}"
+      - "--user={{ ad_join_user }}"
+      - --client-software=sssd
+      - --membership-software=adcli
+      - "--computer-name={{ inventory_hostname | upper }}"
+      - "--computer-ou={{ ad_computer_ou }}"
+    stdin: "{{ ad_join_password }}"
+    stdin_add_newline: true
+  when: ad_domain | lower not in (_joined_realms.stdout_lines | map('lower') | list)
+  no_log: true
+  notify: Restart SSSD
+
+- name: Configure SSSD
+  ansible.builtin.template:
+    src: sssd.conf.j2
+    dest: /etc/sssd/sssd.conf
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart SSSD
+
+- name: Enable automatic home-directory creation
+  ansible.builtin.command:
+    argv:
+      - pam-auth-update
+      - --package
+      - --enable
+      - mkhomedir
+  register: _pam_mkhomedir
+  changed_when: "'Creating config file' in _pam_mkhomedir.stdout"
+
+- name: Configure sudo access for AD administrators
+  ansible.builtin.template:
+    src: ad-admins.sudoers.j2
+    dest: /etc/sudoers.d/ad-admins
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Configure SSH public keys from Active Directory
+  ansible.builtin.template:
+    src: ad-authorized-keys.conf.j2
+    dest: /etc/ssh/sshd_config.d/40-ad-authorized-keys.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Restart SSH
+
+- name: Apply SSSD handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure SSSD is enabled and running
+  ansible.builtin.service:
+    name: sssd
+    enabled: true
+    state: started
+
+- name: Verify the SSSD SSH key helper is installed
+  ansible.builtin.stat:
+    path: /usr/bin/sss_ssh_authorizedkeys
+  register: _sss_ssh_authorizedkeys
+  failed_when: not _sss_ssh_authorizedkeys.stat.executable | default(false)
+
+- name: Verify realm membership
+  ansible.builtin.command:
+    argv:
+      - realm
+      - list
+      - --name-only
+  register: _realm_verification
+  changed_when: false
+  failed_when: ad_domain | lower not in (_realm_verification.stdout_lines | map('lower') | list)

@@ -78,6 +78,28 @@ all:
       hosts:
         mbhome-ad-02: {}
 
+    development_vms:
+      vars:
+        development_full_upgrade_enabled: true
+      hosts: {}
+
+    linux_domain_members:
+      vars:
+        ad_domain: mbhome.biz
+        ad_realm: MBHOME.BIZ
+        # Keep this unqualified so realmd applies the discovered uppercase
+        # Kerberos realm (MBHOME.BIZ) instead of treating the DNS domain as it.
+        ad_join_user: Administrator
+        ad_join_password: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
+        ad_computer_ou: OU=Computers,OU=home,DC=mbhome,DC=biz
+        ad_login_groups:
+          - linux-users
+          - linux-admins
+        ad_admin_groups:
+          - linux-admins
+      children:
+        development_vms: {}
+
     talos_control_plane:
       hosts: {}  # TODO: populate after Terraform provisions Talos VMs
 

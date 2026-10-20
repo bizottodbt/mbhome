@@ -464,9 +464,16 @@ foreach ($User in $DesiredUsers) {
   $ResetPassword = [bool](Get-JsonProperty $User "reset_password" $false)
   $UidNumber = [int](Get-JsonProperty $User "__desired_uid_number" 0)
   $GidNumber = [int](Get-JsonProperty $User "__desired_gid_number" 0)
+  $ManageAltSecurityIdentities = Test-JsonProperty $User "altSecurityIdentities"
+  $AltSecurityIdentities = @(
+    ConvertTo-Array (Get-JsonProperty $User "altSecurityIdentities" @()) |
+      ForEach-Object { [string]$_ } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+      Sort-Object -Unique
+  )
 
   $EscapedUser = Escape-LdapFilterValue $Username
-  $UserProperties = @("GivenName", "Surname", "DisplayName", "EmailAddress", "Description", "UserPrincipalName", "Enabled", "PasswordNeverExpires", "uidNumber", "gidNumber", "SamAccountName")
+  $UserProperties = @("GivenName", "Surname", "DisplayName", "EmailAddress", "Description", "UserPrincipalName", "Enabled", "PasswordNeverExpires", "uidNumber", "gidNumber", "SamAccountName", "altSecurityIdentities")
   $Existing = Get-ADUser -LDAPFilter "(sAMAccountName=$EscapedUser)" -Properties $UserProperties -ErrorAction SilentlyContinue
   if ($null -eq $Existing) {
     $DesiredUserDn = Get-ObjectDn $User "CN" $DisplayName $Path
@@ -495,6 +502,9 @@ foreach ($User in $DesiredUsers) {
       $OtherAttributes = @{}
       if ($UidNumber -gt 0) { $OtherAttributes.uidNumber = $UidNumber }
       if ($GidNumber -gt 0) { $OtherAttributes.gidNumber = $GidNumber }
+      if ($ManageAltSecurityIdentities -and $AltSecurityIdentities.Count -gt 0) {
+        $OtherAttributes.altSecurityIdentities = [string[]]$AltSecurityIdentities
+      }
       if ($OtherAttributes.Count -gt 0) { $NewUserParams.OtherAttributes = $OtherAttributes }
       if (-not [string]::IsNullOrWhiteSpace($InitialPassword)) {
         $NewUserParams.AccountPassword = ConvertTo-SecureString $InitialPassword -AsPlainText -Force
@@ -539,6 +549,30 @@ foreach ($User in $DesiredUsers) {
     if ($GidNumber -gt 0 -and [string]$Existing.gidNumber -ne [string]$GidNumber) {
       Invoke-DirectoryChange "Update user gidNumber $Username" {
         Set-ADUser -Identity $Existing.DistinguishedName -Replace @{ gidNumber = $GidNumber }
+      }
+    }
+
+    if ($ManageAltSecurityIdentities) {
+      $ExistingAltSecurityIdentities = @(
+        ConvertTo-Array $Existing.altSecurityIdentities |
+          ForEach-Object { [string]$_ } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+          Sort-Object -Unique
+      )
+      $AltSecurityIdentitiesDiffer = @(
+        Compare-Object -ReferenceObject $ExistingAltSecurityIdentities -DifferenceObject $AltSecurityIdentities
+      ).Count -gt 0
+
+      if ($AltSecurityIdentitiesDiffer) {
+        Invoke-DirectoryChange "Update user altSecurityIdentities $Username" {
+          if ($AltSecurityIdentities.Count -eq 0) {
+            Set-ADUser -Identity $Existing.DistinguishedName -Clear altSecurityIdentities
+          } else {
+            Set-ADUser -Identity $Existing.DistinguishedName -Replace @{
+              altSecurityIdentities = [string[]]$AltSecurityIdentities
+            }
+          }
+        }
       }
     }
 

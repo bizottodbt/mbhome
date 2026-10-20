@@ -1,0 +1,19 @@
+---
+- name: Clear SSSD cache
+  ansible.builtin.command:
+    argv:
+      - sss_cache
+      - -E
+  changed_when: true
+  listen: Restart SSSD
+
+- name: Restart SSSD service
+  ansible.builtin.service:
+    name: sssd
+    state: restarted
+  listen: Restart SSSD
+
+- name: Restart SSH
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
