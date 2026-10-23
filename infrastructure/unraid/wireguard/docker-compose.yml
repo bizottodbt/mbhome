@@ -1,6 +1,6 @@
 services:
   cloudflare-ddns:
-    image: favonia/cloudflare-ddns:1@sha256:5e61736b982b87d84a1120b4767c4deff0f2cc55ca3ee9dcb1dc58623039b5cb
+    image: favonia/cloudflare-ddns:1@sha256:345b41895a8846d74c62d30bd27e61101a754f8ab8da10c68115823883803afb
     container_name: wireguard-cloudflare-ddns
     restart: unless-stopped
     user: "${DDNS_UID:-1000}:${DDNS_GID:-1000}"
