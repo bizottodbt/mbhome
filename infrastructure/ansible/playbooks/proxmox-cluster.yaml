@@ -307,7 +307,9 @@
               'set',
               item.storage,
               '--content',
-              item.content | default(['images']) | join(',')
+              item.content | default(['images']) | join(','),
+              '--disable',
+              ('0' if (item.enabled | default(true) | bool) else '1')
             ]
             + (['--options', item.options] if item.options is defined else [])
             + (['--nodes', item.nodes | join(',')] if item.nodes is defined else [])
