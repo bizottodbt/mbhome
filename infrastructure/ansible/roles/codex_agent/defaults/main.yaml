@@ -1,0 +1,7 @@
+---
+codex_agent_user: codex-agent
+codex_agent_group: codex-agent
+codex_agent_home: /var/lib/codex-agent
+codex_agent_workspace_root: "{{ codex_agent_home }}/workspaces"
+codex_agent_git_name: mbhome Codex Agent
+codex_agent_git_email: codex-agent@mbhome.biz

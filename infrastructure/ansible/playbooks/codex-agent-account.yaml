@@ -1,0 +1,6 @@
+---
+- name: Configure the local Codex agent account
+  hosts: development_vms
+  become: true
+  roles:
+    - codex_agent

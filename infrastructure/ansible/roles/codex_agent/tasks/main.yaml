@@ -1,0 +1,68 @@
+---
+- name: Create the Codex agent group
+  ansible.builtin.group:
+    name: "{{ codex_agent_group }}"
+    system: true
+    state: present
+
+- name: Create the locked Codex agent account
+  ansible.builtin.user:
+    name: "{{ codex_agent_user }}"
+    group: "{{ codex_agent_group }}"
+    groups: ""
+    append: false
+    home: "{{ codex_agent_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+    password_lock: true
+    state: present
+
+- name: Create private Codex agent directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ codex_agent_user }}"
+    group: "{{ codex_agent_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ codex_agent_home }}"
+      mode: "0700"
+    - path: "{{ codex_agent_home }}/.codex"
+      mode: "0700"
+    - path: "{{ codex_agent_home }}/.ssh"
+      mode: "0700"
+    - path: "{{ codex_agent_workspace_root }}"
+      mode: "0700"
+
+- name: Configure the Codex agent Git identity
+  ansible.builtin.template:
+    src: gitconfig.j2
+    dest: "{{ codex_agent_home }}/.gitconfig"
+    owner: "{{ codex_agent_user }}"
+    group: "{{ codex_agent_group }}"
+    mode: "0600"
+
+- name: Ensure no agent sudoers policy exists
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/{{ codex_agent_user }}"
+    state: absent
+
+- name: Read Codex agent group memberships
+  ansible.builtin.command:
+    argv:
+      - id
+      - -nG
+      - "{{ codex_agent_user }}"
+  register: _codex_agent_groups
+  changed_when: false
+
+- name: Assert the Codex agent has no privileged supplementary groups
+  ansible.builtin.assert:
+    that:
+      - "'sudo' not in _codex_agent_groups.stdout.split()"
+      - "'docker' not in _codex_agent_groups.stdout.split()"
+      - "'libvirt' not in _codex_agent_groups.stdout.split()"
+    fail_msg: >-
+      {{ codex_agent_user }} unexpectedly belongs to a privileged group:
+      {{ _codex_agent_groups.stdout }}

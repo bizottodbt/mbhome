@@ -48,6 +48,10 @@ spec:
                 value:
                   type: RuntimeDefault
   values:
+    image:
+      tag: 17.0.0-rootless
+      digest: sha256:6554520f7574602100b7d6620c6ac5b18cec30325f823777497eac36234f5cf8
+
     replicaCount: 1
     strategy:
       type: Recreate
@@ -175,6 +179,8 @@ spec:
           NAME: forgejo
           USER: forgejo
           SSL_MODE: require
+        security:
+          REVERSE_PROXY_TRUSTED_PROXIES: 10.244.0.0/16,127.0.0.0/8,::1/128
         cache:
           ADAPTER: memory
         session:

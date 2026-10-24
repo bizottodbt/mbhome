@@ -76,3 +76,22 @@ The toolchain includes Python, `uv`, Node.js/npm, Codex CLI, PostgreSQL client
 and headers, Docker/Compose, Ansible, Terraform, Packer, kubectl, Helm, Flux,
 Talos CLI, Kustomize, Trivy, Git LFS, and the usual shell/build utilities. Log
 out and back in after the first run so the `docker` group membership applies.
+
+## Codex agent account
+
+Create the always-on agent identity separately from interactive AD users:
+
+```bash
+make codex-agent-account
+```
+
+This creates the locked local `codex-agent` system account with `/bin/bash`, a
+private home at `/var/lib/codex-agent`, and its repository workspace at
+`/var/lib/codex-agent/workspaces`. The account has no sudo policy and is not a
+member of `docker`, `libvirt`, or other supplementary groups. Its password is
+locked; processes can be launched as this identity by systemd or root, but the
+account cannot be used for password login.
+
+Forgejo credentials, OpenAI authentication, Remote connectivity, and any
+background service are intentionally configured in later steps so none of
+those permissions are implied merely by creating the local account.
