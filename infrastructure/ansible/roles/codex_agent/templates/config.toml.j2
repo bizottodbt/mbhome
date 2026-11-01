@@ -1,0 +1,7 @@
+sandbox_mode = "{{ codex_agent_sandbox_mode }}"
+approval_policy = "{{ codex_agent_approval_policy }}"
+approvals_reviewer = "{{ codex_agent_approvals_reviewer }}"
+
+[sandbox_workspace_write]
+writable_roots = ["{{ codex_agent_workspace_root }}"]
+network_access = {{ codex_agent_network_access | bool | lower }}

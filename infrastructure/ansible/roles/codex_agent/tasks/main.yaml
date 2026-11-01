@@ -58,6 +58,15 @@
     group: "{{ codex_agent_group }}"
     mode: "0600"
 
+- name: Configure Codex sandbox and approval behavior
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: "{{ codex_agent_home }}/.codex/config.toml"
+    owner: "{{ codex_agent_user }}"
+    group: "{{ codex_agent_group }}"
+    mode: "0600"
+  notify: Restart Codex Remote
+
 - name: Install the Forgejo pull request helper
   ansible.builtin.template:
     src: forgejo-open-pr.j2
