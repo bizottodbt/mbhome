@@ -1,0 +1,7 @@
+---
+development_network_interface: eth0
+development_dns_servers:
+  - 10.20.30.11
+  - 10.20.30.12
+development_dns_domains:
+  - mbhome.biz

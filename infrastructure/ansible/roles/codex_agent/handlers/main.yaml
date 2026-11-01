@@ -1,0 +1,6 @@
+---
+- name: Restart Codex Remote
+  ansible.builtin.systemd_service:
+    name: codex-agent-remote.service
+    daemon_reload: true
+    state: restarted

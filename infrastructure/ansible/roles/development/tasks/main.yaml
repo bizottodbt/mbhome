@@ -1,4 +1,41 @@
 ---
+- name: Configure development VM DNS
+  tags:
+    - development_dns
+  block:
+    - name: Create the systemd-networkd override directory
+      ansible.builtin.file:
+        path: "/etc/systemd/network/10-netplan-{{ development_network_interface }}.network.d"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure authoritative DNS for the development network
+      ansible.builtin.template:
+        src: dns.network.conf.j2
+        dest: "/etc/systemd/network/10-netplan-{{ development_network_interface }}.network.d/90-mbhome-dns.conf"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Apply development DNS servers immediately
+      ansible.builtin.command:
+        argv: "{{ ['resolvectl', 'dns', development_network_interface] + development_dns_servers }}"
+      changed_when: false
+
+    - name: Apply development DNS search domains immediately
+      ansible.builtin.command:
+        argv: "{{ ['resolvectl', 'domain', development_network_interface] + development_dns_domains }}"
+      changed_when: false
+
+    - name: Flush the development VM DNS cache
+      ansible.builtin.command:
+        argv:
+          - resolvectl
+          - flush-caches
+      changed_when: false
+
 - name: Upgrade installed Debian packages
   ansible.builtin.apt:
     upgrade: full

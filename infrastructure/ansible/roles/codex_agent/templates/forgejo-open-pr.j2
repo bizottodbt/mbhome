@@ -1,0 +1,83 @@
+#!/bin/sh
+set -eu
+
+forgejo_url="https://git.apps.mbhome.biz"
+token_file="{{ codex_agent_home }}/.config/forgejo/token"
+
+usage() {
+  echo "Usage: forgejo-open-pr --title <title> [--body <body>]" >&2
+  exit 2
+}
+
+title=""
+body=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --title)
+      [ "$#" -ge 2 ] || usage
+      title="$2"
+      shift 2
+      ;;
+    --body)
+      [ "$#" -ge 2 ] || usage
+      body="$2"
+      shift 2
+      ;;
+    *) usage ;;
+  esac
+done
+
+[ -n "$title" ] || usage
+[ -s "$token_file" ] || {
+  echo "Forgejo token is missing: $token_file" >&2
+  exit 1
+}
+
+origin_url="$(git remote get-url origin)"
+case "$origin_url" in
+  *://*) repository_path="${origin_url#*://}"; repository_path="${repository_path#*/}" ;;
+  *:*) repository_path="${origin_url#*:}" ;;
+  *) echo "Unsupported origin URL: $origin_url" >&2; exit 1 ;;
+esac
+repository_path="${repository_path#/}"
+repository_path="${repository_path%.git}"
+owner="${repository_path%%/*}"
+repository="${repository_path#*/}"
+
+[ -n "$owner" ] && [ -n "$repository" ] && [ "$owner" != "$repository" ] || {
+  echo "Could not derive owner/repository from origin: $origin_url" >&2
+  exit 1
+}
+
+branch="$(git branch --show-current)"
+[ -n "$branch" ] || {
+  echo "Cannot open a pull request from a detached HEAD" >&2
+  exit 1
+}
+
+token="$(cat "$token_file")"
+repository_json="$(curl -fsS \
+  -H "Authorization: token $token" \
+  "$forgejo_url/api/v1/repos/$owner/$repository")"
+default_branch="$(printf '%s' "$repository_json" | jq -r '.default_branch')"
+
+[ "$branch" != "$default_branch" ] || {
+  echo "Refusing to open a pull request from the default branch: $default_branch" >&2
+  exit 1
+}
+
+payload="$(jq -n \
+  --arg title "$title" \
+  --arg body "$body" \
+  --arg head "$branch" \
+  --arg base "$default_branch" \
+  '{title: $title, body: $body, head: $head, base: $base}')"
+
+response="$(curl -fsS \
+  -X POST \
+  -H "Authorization: token $token" \
+  -H "Content-Type: application/json" \
+  --data "$payload" \
+  "$forgejo_url/api/v1/repos/$owner/$repository/pulls")"
+
+printf '%s\n' "$response" | jq -r '.html_url'

@@ -1,0 +1,9 @@
+[Network]
+DNS=
+{% for dns_server in development_dns_servers %}
+DNS={{ dns_server }}
+{% endfor %}
+Domains=
+{% for dns_domain in development_dns_domains %}
+Domains={{ dns_domain }}
+{% endfor %}

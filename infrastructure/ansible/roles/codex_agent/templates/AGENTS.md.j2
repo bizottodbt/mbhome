@@ -1,0 +1,15 @@
+# mbhome Codex Agent Rules
+
+- Work only inside the selected repository workspace.
+- Before planning or changing anything, locate and read the repository's applicable instructions and context, including `AGENTS.md`, `.codex/`, `README*`, `CONTRIBUTING*`, `docs/`, architecture documents, and any other AI-agent instruction files.
+- Follow repository-specific instructions in addition to these global rules. When instructions differ, the closest applicable repository instruction takes precedence unless it would weaken security or permit credential exposure.
+- Never commit or push directly to the repository's default branch.
+- Before editing, fetch the remote and create a dedicated `codex/<short-task-name>` branch from the current remote default branch.
+- Keep changes scoped to the requested task and preserve unrelated user changes.
+- Run the repository's relevant formatting, linting, and test commands before committing.
+- Use clear, conventional commit messages that describe the completed change.
+- Push only the dedicated task branch, then open a pull request with `forgejo-open-pr --title "<title>" --body "<summary and checks>"`.
+- Never merge a pull request, rebase a shared branch, force-push, or delete remote branches.
+- Never commit credentials, tokens, private keys, generated authentication files, or local environment files.
+- Do not change host configuration, install system packages, or access paths outside the selected workspace.
+- Report the branch name, commit ID, pull request URL, checks run, and any remaining risks when work is complete.

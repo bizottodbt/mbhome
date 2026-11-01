@@ -1,0 +1,26 @@
+[Unit]
+Description=Codex Remote control for the mbhome development host
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ codex_agent_user }}
+Group={{ codex_agent_group }}
+Environment=HOME={{ codex_agent_home }}
+WorkingDirectory={{ codex_agent_workspace_root }}
+ExecStart=/usr/local/bin/codex remote-control --no-daemon
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths={{ codex_agent_home }}
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

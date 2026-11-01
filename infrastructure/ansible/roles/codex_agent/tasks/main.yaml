@@ -1,4 +1,11 @@
 ---
+- name: Install Codex agent sandbox dependencies
+  ansible.builtin.apt:
+    name:
+      - bubblewrap
+    state: present
+    update_cache: true
+
 - name: Create the Codex agent group
   ansible.builtin.group:
     name: "{{ codex_agent_group }}"
@@ -42,6 +49,38 @@
     owner: "{{ codex_agent_user }}"
     group: "{{ codex_agent_group }}"
     mode: "0600"
+
+- name: Configure global Codex agent instructions
+  ansible.builtin.template:
+    src: AGENTS.md.j2
+    dest: "{{ codex_agent_home }}/.codex/AGENTS.md"
+    owner: "{{ codex_agent_user }}"
+    group: "{{ codex_agent_group }}"
+    mode: "0600"
+
+- name: Install the Forgejo pull request helper
+  ansible.builtin.template:
+    src: forgejo-open-pr.j2
+    dest: /usr/local/bin/forgejo-open-pr
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the Codex Remote systemd service
+  ansible.builtin.template:
+    src: codex-agent-remote.service.j2
+    dest: /etc/systemd/system/codex-agent-remote.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Codex Remote
+
+- name: Enable the Codex Remote systemd service
+  ansible.builtin.systemd_service:
+    name: codex-agent-remote.service
+    enabled: true
+    daemon_reload: true
+    state: started
 
 - name: Ensure no agent sudoers policy exists
   ansible.builtin.file:
