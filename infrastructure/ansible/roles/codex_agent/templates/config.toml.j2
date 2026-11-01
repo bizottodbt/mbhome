@@ -5,3 +5,8 @@ approvals_reviewer = "{{ codex_agent_approvals_reviewer }}"
 [sandbox_workspace_write]
 writable_roots = ["{{ codex_agent_workspace_root }}"]
 network_access = {{ codex_agent_network_access | bool | lower }}
+{% for project_name in codex_agent_project_names %}
+
+[projects."{{ codex_agent_workspace_root }}/{{ project_name }}"]
+trust_level = "trusted"
+{% endfor %}

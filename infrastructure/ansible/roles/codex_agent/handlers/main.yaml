@@ -1,6 +1,29 @@
 ---
-- name: Restart Codex Remote
+- name: Reload Codex Remote systemd configuration
   ansible.builtin.systemd_service:
-    name: codex-agent-remote.service
     daemon_reload: true
-    state: restarted
+  listen: Restart Codex Remote
+
+- name: Request a Codex Remote restart
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - restart
+      - codex-agent-remote.service
+  register: _codex_remote_restart
+  changed_when: true
+  failed_when: false
+  listen: Restart Codex Remote
+
+- name: Wait for Codex Remote to reconnect
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - codex-agent-remote.service
+  register: _codex_remote_active
+  changed_when: false
+  retries: 6
+  delay: 5
+  until: _codex_remote_active.stdout == 'active'
+  listen: Restart Codex Remote

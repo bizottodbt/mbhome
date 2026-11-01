@@ -12,6 +12,50 @@
     system: true
     state: present
 
+- name: Read the existing Codex agent account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ codex_agent_user }}"
+    fail_key: false
+
+- name: Stop Codex Remote before moving its home directory
+  ansible.builtin.systemd_service:
+    name: codex-agent-remote.service
+    state: stopped
+  when:
+    - ansible_facts.getent_passwd[codex_agent_user] is defined
+    - ansible_facts.getent_passwd[codex_agent_user][4] != codex_agent_home
+
+- name: Stop stale Codex agent processes before moving its home directory
+  ansible.builtin.command:
+    argv:
+      - pkill
+      - -TERM
+      - -u
+      - "{{ codex_agent_user }}"
+  register: _codex_agent_process_stop
+  changed_when: _codex_agent_process_stop.rc == 0
+  failed_when: _codex_agent_process_stop.rc not in [0, 1]
+  when:
+    - ansible_facts.getent_passwd[codex_agent_user] is defined
+    - ansible_facts.getent_passwd[codex_agent_user][4] != codex_agent_home
+
+- name: Wait for Codex agent processes to stop
+  ansible.builtin.command:
+    argv:
+      - pgrep
+      - -u
+      - "{{ codex_agent_user }}"
+  register: _codex_agent_process_check
+  changed_when: false
+  failed_when: _codex_agent_process_check.rc not in [0, 1]
+  retries: 10
+  delay: 1
+  until: _codex_agent_process_check.rc == 1
+  when:
+    - ansible_facts.getent_passwd[codex_agent_user] is defined
+    - ansible_facts.getent_passwd[codex_agent_user][4] != codex_agent_home
+
 - name: Create the locked Codex agent account
   ansible.builtin.user:
     name: "{{ codex_agent_user }}"
@@ -22,6 +66,7 @@
     shell: /bin/bash
     system: true
     create_home: true
+    move_home: true
     password_lock: true
     state: present
 
@@ -41,6 +86,58 @@
       mode: "0700"
     - path: "{{ codex_agent_workspace_root }}"
       mode: "0700"
+
+- name: Create the legacy Codex workspace directory
+  ansible.builtin.file:
+    path: "{{ codex_agent_legacy_workspace_root }}"
+    state: directory
+    owner: "{{ codex_agent_user }}"
+    group: "{{ codex_agent_group }}"
+    mode: "0700"
+
+- name: Repair the managed Codex daemon link after a home migration
+  ansible.builtin.shell: |
+    set -eu
+    package_dir={{ (codex_agent_home ~ '/.codex/packages/app-server-daemon') | quote }}
+    current="$package_dir/current"
+
+    if [ -d "$package_dir/releases" ] && [ ! -x "$current/bin/codex" ]; then
+      release="$(find "$package_dir/releases" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+      if [ -n "$release" ] && [ -x "$release/bin/codex" ]; then
+        ln -sfn "$release" "$current"
+        printf 'relinked\n'
+      fi
+    fi
+  args:
+    executable: /bin/bash
+  become_user: "{{ codex_agent_user }}"
+  register: _codex_agent_daemon_link
+  changed_when: _codex_agent_daemon_link.stdout | length > 0
+
+- name: Migrate projects into the Codex Remote project directory
+  ansible.builtin.shell: |
+    set -eu
+    source_path={{ (codex_agent_legacy_workspace_root ~ '/' ~ item) | quote }}
+    project_path={{ (codex_agent_workspace_root ~ '/' ~ item) | quote }}
+
+    if [ -L "$source_path" ] && [ "$(readlink "$source_path")" != "$project_path" ]; then
+      ln -sfn "$project_path" "$source_path"
+      printf 'relinked\n'
+    elif [ -d "$source_path" ] && [ ! -L "$source_path" ] && [ ! -e "$project_path" ]; then
+      mv "$source_path" "$project_path"
+      ln -s "$project_path" "$source_path"
+      printf 'migrated\n'
+    elif [ -d "$project_path" ] && [ ! -e "$source_path" ]; then
+      ln -s "$project_path" "$source_path"
+      printf 'linked\n'
+    fi
+  args:
+    executable: /bin/bash
+  become_user: "{{ codex_agent_user }}"
+  register: _codex_agent_project_migration
+  changed_when: _codex_agent_project_migration.stdout | length > 0
+  loop: "{{ codex_agent_project_names }}"
+  notify: Restart Codex Remote
 
 - name: Configure the Codex agent Git identity
   ansible.builtin.template:

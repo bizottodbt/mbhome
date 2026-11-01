@@ -138,7 +138,7 @@
     append: true
   notify: Restart Docker
 
-- name: Check whether Codex CLI is installed
+- name: Read the installed Codex CLI version
   ansible.builtin.command:
     argv:
       - codex
@@ -147,14 +147,50 @@
   changed_when: false
   failed_when: false
 
-- name: Install Codex CLI
+- name: Install the configured Codex CLI version
   ansible.builtin.command:
     argv:
       - npm
       - install
       - --global
-      - '@openai/codex'
-  when: _codex_version.rc != 0
+      - "@openai/codex@{{ development_codex_cli_version }}"
+  register: _codex_install
+  when: >-
+    _codex_version.rc != 0 or
+    ('codex-cli ' ~ development_codex_cli_version) not in _codex_version.stdout
+
+- name: Check for the Codex Remote service
+  ansible.builtin.stat:
+    path: /etc/systemd/system/codex-agent-remote.service
+  register: _codex_remote_service
+
+- name: Restart Codex Remote after a CLI upgrade
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - restart
+      - codex-agent-remote.service
+  register: _codex_remote_restart
+  changed_when: true
+  failed_when: false
+  when:
+    - _codex_install is changed
+    - _codex_remote_service.stat.exists
+
+- name: Wait for Codex Remote after a CLI upgrade
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - codex-agent-remote.service
+  register: _codex_remote_active
+  changed_when: false
+  retries: 6
+  delay: 5
+  until: _codex_remote_active.stdout == 'active'
+  when:
+    - _codex_install is changed
+    - _codex_remote_service.stat.exists
 
 - name: Install uv for the development user
   ansible.builtin.command:

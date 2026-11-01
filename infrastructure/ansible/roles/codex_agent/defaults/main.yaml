@@ -1,11 +1,14 @@
 ---
 codex_agent_user: codex-agent
 codex_agent_group: codex-agent
-codex_agent_home: /var/lib/codex-agent
-codex_agent_workspace_root: "{{ codex_agent_home }}/workspaces"
+codex_agent_home: /home/codex-agent
+codex_agent_workspace_root: "{{ codex_agent_home }}/Documents/Codex"
+codex_agent_legacy_workspace_root: "{{ codex_agent_home }}/workspaces"
 codex_agent_git_name: mbhome Codex Agent
 codex_agent_git_email: codex-agent@mbhome.biz
 codex_agent_sandbox_mode: workspace-write
 codex_agent_approval_policy: on-request
 codex_agent_approvals_reviewer: auto_review
 codex_agent_network_access: true
+codex_agent_project_names:
+  - finance-platform

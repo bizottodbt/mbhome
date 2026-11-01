@@ -4,18 +4,21 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=simple
+Type=oneshot
 User={{ codex_agent_user }}
 Group={{ codex_agent_group }}
 Environment=HOME={{ codex_agent_home }}
 WorkingDirectory={{ codex_agent_workspace_root }}
-ExecStart=/usr/local/bin/codex remote-control --no-daemon
+ExecStart=/usr/local/bin/codex remote-control start
+ExecStop=/usr/local/bin/codex remote-control stop
+RemainAfterExit=yes
+TimeoutStartSec=120
+TimeoutStopSec=30
 Restart=on-failure
 RestartSec=5s
 UMask=0077
 NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
+ProtectHome=read-only
 ProtectSystem=full
 ReadWritePaths={{ codex_agent_home }}
 RestrictSUIDSGID=true
