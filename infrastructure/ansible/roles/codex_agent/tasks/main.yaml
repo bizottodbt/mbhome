@@ -23,7 +23,7 @@
     name: codex-agent-remote.service
     state: stopped
   when:
-    - ansible_facts.getent_passwd[codex_agent_user] is defined
+    - ansible_facts.getent_passwd[codex_agent_user] is not none
     - ansible_facts.getent_passwd[codex_agent_user][4] != codex_agent_home
 
 - name: Stop stale Codex agent processes before moving its home directory
@@ -37,7 +37,7 @@
   changed_when: _codex_agent_process_stop.rc == 0
   failed_when: _codex_agent_process_stop.rc not in [0, 1]
   when:
-    - ansible_facts.getent_passwd[codex_agent_user] is defined
+    - ansible_facts.getent_passwd[codex_agent_user] is not none
     - ansible_facts.getent_passwd[codex_agent_user][4] != codex_agent_home
 
 - name: Wait for Codex agent processes to stop
@@ -53,7 +53,7 @@
   delay: 1
   until: _codex_agent_process_check.rc == 1
   when:
-    - ansible_facts.getent_passwd[codex_agent_user] is defined
+    - ansible_facts.getent_passwd[codex_agent_user] is not none
     - ansible_facts.getent_passwd[codex_agent_user][4] != codex_agent_home
 
 - name: Create the locked Codex agent account
@@ -120,6 +120,12 @@
     source_path={{ (codex_agent_legacy_workspace_root ~ '/' ~ item) | quote }}
     project_path={{ (codex_agent_workspace_root ~ '/' ~ item) | quote }}
 
+    # A previous migration may have left the destination as a compatibility
+    # link to the source. Remove that link before moving the repository back.
+    if [ -L "$project_path" ] && [ "$(readlink -f "$project_path")" = "$(readlink -f "$source_path")" ]; then
+      rm "$project_path"
+    fi
+
     if [ -L "$source_path" ] && [ "$(readlink "$source_path")" != "$project_path" ]; then
       ln -sfn "$project_path" "$source_path"
       printf 'relinked\n'
@@ -138,6 +144,20 @@
   changed_when: _codex_agent_project_migration.stdout | length > 0
   loop: "{{ codex_agent_project_names }}"
   notify: Restart Codex Remote
+
+- name: Inspect obsolete project links in the Codex session directory
+  ansible.builtin.stat:
+    path: "{{ codex_agent_home }}/Documents/Codex/{{ item }}"
+    follow: false
+  register: _codex_agent_obsolete_project_links
+  loop: "{{ codex_agent_project_names }}"
+
+- name: Remove obsolete project links from the Codex session directory
+  ansible.builtin.file:
+    path: "{{ codex_agent_home }}/Documents/Codex/{{ item.item }}"
+    state: absent
+  loop: "{{ _codex_agent_obsolete_project_links.results }}"
+  when: item.stat.islnk | default(false)
 
 - name: Configure the Codex agent Git identity
   ansible.builtin.template:
@@ -172,6 +192,11 @@
     group: root
     mode: "0755"
 
+- name: Check whether the Codex agent is authenticated
+  ansible.builtin.stat:
+    path: "{{ codex_agent_home }}/.codex/auth.json"
+  register: _codex_agent_auth
+
 - name: Install the Codex Remote systemd service
   ansible.builtin.template:
     src: codex-agent-remote.service.j2
@@ -186,7 +211,7 @@
     name: codex-agent-remote.service
     enabled: true
     daemon_reload: true
-    state: started
+    state: "{{ 'started' if _codex_agent_auth.stat.exists else 'stopped' }}"
 
 - name: Ensure no agent sudoers policy exists
   ansible.builtin.file:

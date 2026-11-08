@@ -25,6 +25,7 @@ resource "proxmox_download_file" "debian_cloud_image" {
   datastore_id = var.image_datastore_id
   file_name    = var.cloud_image_file_name
   node_name    = var.proxmox_node
+  overwrite    = false
   url          = var.cloud_image_url
 }
 

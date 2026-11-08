@@ -13,6 +13,7 @@
   register: _codex_remote_restart
   changed_when: true
   failed_when: false
+  when: _codex_agent_auth.stat.exists | default(false)
   listen: Restart Codex Remote
 
 - name: Wait for Codex Remote to reconnect
@@ -26,4 +27,5 @@
   retries: 6
   delay: 5
   until: _codex_remote_active.stdout == 'active'
+  when: _codex_agent_auth.stat.exists | default(false)
   listen: Restart Codex Remote

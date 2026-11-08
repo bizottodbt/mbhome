@@ -5,4 +5,4 @@ development_dns_servers:
   - 10.20.30.12
 development_dns_domains:
   - mbhome.biz
-development_codex_cli_version: 0.166.0
+development_codex_cli_version: 0.163.0

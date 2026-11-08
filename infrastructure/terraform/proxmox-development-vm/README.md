@@ -86,8 +86,9 @@ make codex-agent-account
 ```
 
 This creates the locked local `codex-agent` system account with `/bin/bash`, a
-private home at `/var/lib/codex-agent`, and its repository workspace at
-`/var/lib/codex-agent/workspaces`. The account has no sudo policy and is not a
+private home at `/home/codex-agent`, and its repository workspace at
+`/home/codex-agent/Documents/repos`. Codex Remote keeps its generated session
+workspaces separately under `/home/codex-agent/Documents/Codex`. The account has no sudo policy and is not a
 member of `docker`, `libvirt`, or other supplementary groups. Its password is
 locked; processes can be launched as this identity by systemd or root, but the
 account cannot be used for password login.

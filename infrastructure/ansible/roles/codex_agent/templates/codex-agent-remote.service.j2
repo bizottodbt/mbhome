@@ -4,16 +4,12 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 User={{ codex_agent_user }}
 Group={{ codex_agent_group }}
 Environment=HOME={{ codex_agent_home }}
 WorkingDirectory={{ codex_agent_workspace_root }}
-ExecStart=/usr/local/bin/codex remote-control start
-ExecStop=/usr/local/bin/codex remote-control stop
-RemainAfterExit=yes
-TimeoutStartSec=120
-TimeoutStopSec=30
+ExecStart=/usr/local/bin/codex remote-control --no-daemon
 Restart=on-failure
 RestartSec=5s
 UMask=0077
