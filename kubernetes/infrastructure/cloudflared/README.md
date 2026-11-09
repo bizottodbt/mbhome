@@ -165,9 +165,18 @@ The cloudflared namespace has a workload-scoped Cilium policy:
   reconnects do not depend only on Cilium's DNS cache.
 - cloudflared can reach the internal Cilium Gateway address `10.20.30.200` on
   `443`.
+- Direct requests to the Cilium Gateway are authorized in two legs. In addition
+  to the Gateway IP, cloudflared needs an egress rule for each published
+  HTTPRoute backend's pod labels and container port. The Finance route allows
+  only `finance-platform-api:8000` and `finance-platform-web:3000`; add an
+  equivalent narrowly scoped backend rule when publishing another Kubernetes
+  app. The existing public test route also allows `whoami:8080`. Without the
+  backend rule, Cilium Envoy returns `403 Access denied` even though the Gateway
+  IP itself is reachable.
 - cloudflared can reach the Unraid HAProxy address `10.20.30.50` on `80` and
   `443` for non-Kubernetes origins routed through HAProxy.
 
 Cloudflare Tunnel routes are configured in the Cloudflare dashboard, not in this
-repository. When adding a new origin that points somewhere other than the
-internal Gateway or HAProxy, add a matching egress exception here first.
+repository. When adding a Kubernetes route, add both its backend egress rule and
+the public hostname in Cloudflare. When adding an origin outside the internal
+Gateway or HAProxy, add a matching destination egress exception first.

@@ -75,19 +75,35 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: finance-platform
+            app.kubernetes.io/name: finance-platform-api
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: finance-platform
+            app.kubernetes.io/name: finance-platform-web
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: whoami
+            app.kubernetes.io/name: whoami
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
     - toCIDRSet:
         - cidr: 10.20.30.50/32
       toPorts:
         - ports:
             - port: "80"
               protocol: TCP
-            - port: "443"
-              protocol: TCP
-    - toServices:
-        - k8sService:
-            namespace: gateway-system
-            serviceName: cilium-gateway-internal
-      toPorts:
-        - ports:
             - port: "443"
               protocol: TCP
