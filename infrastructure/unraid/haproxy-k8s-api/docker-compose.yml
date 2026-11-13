@@ -1,6 +1,6 @@
 services:
   haproxy:
-    image: haproxy:3.4-alpine@sha256:c0afc4864dca9c68694cd1290433f0ee79b5c55be80f6745a165ffe373b9a564
+    image: haproxy:3.4-alpine@sha256:b9fe316f718d5015c5cfebd8ca019591f3e44656f61d93cb8b59a1028961e530
     container_name: haproxy
     restart: unless-stopped
     ports:
@@ -18,7 +18,7 @@ services:
       retries: 3
 
   certbot:
-    image: certbot/dns-cloudflare:latest@sha256:c45edb002b883da1a1235abb205dff474a7a1a459d878e8d5fdc7f9d83073aea
+    image: certbot/dns-cloudflare:latest@sha256:6d5e1e84f687ce81786c97cbeccb9dda94d86bbb29a81dbb85527bd68008d77d
     container_name: haproxy-certbot
     restart: unless-stopped
     environment:
@@ -37,7 +37,7 @@ services:
     command: ["/usr/local/bin/certbot-renew"]
 
   haproxy-cert-reloader:
-    image: docker:29-cli@sha256:018edbc908e08fcc9dbf029c812c34251e9b4719e6f71ca0e5eae2a987d014ca
+    image: docker:29-cli@sha256:5a7af0dcb0e46c803efe9b45371dd21cb500e5b4453250394ac6f06d49b6e6f1
     container_name: haproxy-cert-reloader
     profiles:
       - auto-reload
