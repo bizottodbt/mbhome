@@ -21,8 +21,9 @@ TALOS_NODE := $(TALOS_CONTROL_PLANE_IP)
 TALOS_NODE_NAME := mbhome-talos-cp-01
 TALOS_CONTROL_PLANE_NODES := mbhome-talos-cp-01 mbhome-talos-cp-02 mbhome-talos-cp-03
 TALOS_WORKER_NODES := mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos-worker-03
-TALOS_UPGRADE_VERSION := v1.13.6
-TALOS_UPGRADE_IMAGE := ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
+TALOS_UPGRADE_VERSION := v1.14.6
+TALOS_UPGRADE_SCHEMATIC := 376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba
+TALOS_UPGRADE_IMAGE := factory.talos.dev/installer/$(TALOS_UPGRADE_SCHEMATIC):$(TALOS_UPGRADE_VERSION)
 TALOS_UPGRADE_DRAIN := true
 
 # Flux GitOps bootstrap. Export GITHUB_TOKEN in your shell before running

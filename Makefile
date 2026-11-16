@@ -44,8 +44,9 @@ TALOS_CONTROL_PLANE_NODES ?= mbhome-talos-cp-01 mbhome-talos-cp-02 mbhome-talos-
 TALOS_WORKER_NODES ?= mbhome-talos-worker-01 mbhome-talos-worker-02 mbhome-talos-worker-03
 TALOS_MACHINE_CONFIG ?= $(TALOS_CLUSTER_DIR)/nodes/$(TALOS_NODE_NAME).yaml
 TALOSCONFIG := $(CURDIR)/$(TALOS_CLUSTER_DIR)/talosconfig
-TALOS_UPGRADE_VERSION ?= v1.13.6
-TALOS_UPGRADE_IMAGE ?= ghcr.io/siderolabs/installer:$(TALOS_UPGRADE_VERSION)
+TALOS_UPGRADE_VERSION ?= v1.14.6
+TALOS_UPGRADE_SCHEMATIC ?= 376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba
+TALOS_UPGRADE_IMAGE ?= factory.talos.dev/installer/$(TALOS_UPGRADE_SCHEMATIC):$(TALOS_UPGRADE_VERSION)
 TALOS_UPGRADE_DRAIN ?= true
 KUBECONFIG_FILE ?= $(CURDIR)/$(TALOS_CLUSTER_DIR)/kubeconfig
 KUBERNETES_ADMIN_CONTEXT ?= admin@$(TALOS_CLUSTER_NAME)
@@ -485,7 +486,7 @@ talos-upgrade-plan: ## Show the Talos upgrade command for the selected node
 	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
 	@echo 'TALOSCONFIG="$(TALOSCONFIG)" talosctl upgrade --nodes "$(TALOS_NODE)" --endpoints "$(TALOS_ENDPOINT)" --image "$(TALOS_UPGRADE_IMAGE)" --drain=$(TALOS_UPGRADE_DRAIN) --wait'
 
-talos-upgrade: ## Upgrade Talos on the selected node (usage: make talos-upgrade TALOS_NODE=10.20.30.70 TALOS_UPGRADE_VERSION=v1.13.6)
+talos-upgrade: ## Upgrade Talos on the selected node (usage: make talos-upgrade TALOS_NODE=10.20.30.70 TALOS_UPGRADE_VERSION=v1.14.6)
 	@test -n "$(TALOS_NODE)" || (echo "Set TALOS_NODE=<talos-node-ip>"; exit 1)
 	@test -n "$(TALOS_ENDPOINT)" || (echo "Set TALOS_ENDPOINT=<control-plane-endpoint-ip-or-dns>"; exit 1)
 	@test -f "$(TALOS_CLUSTER_DIR)/talosconfig" || (echo "Run make talos-gen-config first"; exit 1)
