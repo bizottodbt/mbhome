@@ -70,6 +70,8 @@ spec:
               value: Europe/Stockholm
             - name: IMMICHFRAME_CONFIG_PATH
               value: /app/Config
+            - name: IMMICHFRAME_CONFIG_SOURCE
+              value: file
           ports:
             - name: http
               containerPort: 8080
