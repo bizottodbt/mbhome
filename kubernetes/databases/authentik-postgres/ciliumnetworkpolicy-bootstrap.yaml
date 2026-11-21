@@ -1,0 +1,25 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: authentik-postgres-bootstrap
+  namespace: authentik
+  labels:
+    app.kubernetes.io/name: authentik-postgres
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: cloudnative-pg
+      cnpg.io/cluster: authentik-postgres
+      cnpg.io/podRole: instance
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: authentik
+            k8s:io.cilium.k8s.policy.serviceaccount: authentik-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
